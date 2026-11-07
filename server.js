@@ -309,6 +309,41 @@ app.get('/api/check-auth', (req, res) => {
   res.json({ authenticated: false });
 });
 
+// Choose a profile picture from the built-in set
+const AVATAR_PRESETS = ['fox', 'cat', 'panda', 'robot', 'alien', 'owl', 'ghost', 'frog', 'astronaut', 'penguin'];
+const avatarLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many changes. Please wait a minute and try again.' }
+});
+
+app.post('/api/avatar', avatarLimiter, async (req, res, next) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
+
+    const choice = typeof req.body.avatar === 'string' ? req.body.avatar : '';
+    if (!AVATAR_PRESETS.includes(choice)) {
+      return res.status(400).json({ error: 'Pick one of the available avatars.' });
+    }
+
+    const avatar = `preset:${choice}`;
+    req.user.avatar = avatar;
+    await req.user.save();
+
+    // Update old messages, the user's open tabs, and everyone currently in the room
+    history.forEach((m) => { if (m.userId === req.user.id) m.avatar = avatar; });
+    const sockets = await io.in(`user:${req.user.id}`).fetchSockets();
+    sockets.forEach((s) => { s.data.avatar = avatar; });
+    io.emit('avatar-updated', { userId: req.user.id, avatar });
+
+    res.json({ user: serializeUser(req.user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Start Google sign-in
 app.get('/auth/google', (req, res, next) => {
   if (!GOOGLE_ENABLED) return res.redirect('/?error=google_unavailable');
@@ -425,7 +460,7 @@ io.on('connection', (socket) => {
       id: nextMessageId++,
       userId,
       name,
-      avatar,
+      avatar: socket.data.avatar !== undefined ? socket.data.avatar : avatar,
       color,
       text: message,
       time: now
