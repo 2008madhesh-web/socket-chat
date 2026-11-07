@@ -1,13 +1,25 @@
 {
-  "name": "socket-chat",
-  "version": "1.0.0",
-  "description": "Simple live chat using Socket.io",
+  "name": "atti-chat",
+  "version": "2.0.0",
+  "description": "Atti chat - a live single-room chat with MongoDB Atlas, Passport (local + Google) and Socket.io",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "bcrypt": "^5.1.1",
+    "connect-mongo": "^5.1.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "mongoose": "^8.9.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "socket.io": "^4.8.1"
   }
 }
