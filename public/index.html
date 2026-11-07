@@ -5,16 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live Socket Chat</title>
   <style>
-    * {
-      box-sizing: border-box;
+    :root {
+      --bg: #eef1f6;
+      --panel: #ffffff;
+      --text: #1c1e21;
+      --muted: #6b7280;
+      --border: #e2e5ea;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --bubble: #eceff4;
+      --bubble-own: #2563eb;
+      --bubble-own-text: #ffffff;
+      --shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
     }
+
+    [data-theme="dark"] {
+      --bg: #0b0f17;
+      --panel: #131925;
+      --text: #e6e9ef;
+      --muted: #8b93a3;
+      --border: #232b3a;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --bubble: #1e2636;
+      --bubble-own: #3b82f6;
+      --bubble-own-text: #ffffff;
+      --shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    * { box-sizing: border-box; }
 
     html, body {
       margin: 0;
       height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #f0f2f5;
-      color: #1c1e21;
+      background: var(--bg);
+      color: var(--text);
     }
 
     .app {
@@ -22,23 +48,57 @@
       flex-direction: column;
       height: 100vh;
       height: 100dvh;
-      max-width: 700px;
+      max-width: 720px;
       margin: 0 auto;
-      background: #ffffff;
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      position: relative;
     }
 
     header {
-      padding: 16px;
-      background: #2563eb;
-      color: #ffffff;
-      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
     }
 
-    header h1 {
-      margin: 0;
-      font-size: 1.25rem;
+    .title h1 { margin: 0; font-size: 1.1rem; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+      font-size: 0.75rem;
+      color: var(--muted);
     }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+    .dot.online { background: #22c55e; }
+    .dot.connecting { background: #f59e0b; }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: var(--bubble); }
 
     #messages {
       flex: 1;
@@ -46,116 +106,465 @@
       padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 2px;
+      scroll-behavior: smooth;
     }
 
-    .message {
-      max-width: 80%;
-      padding: 8px 12px;
-      border-radius: 14px;
-      background: #e4e6eb;
-      word-wrap: break-word;
-      overflow-wrap: anywhere;
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      margin-top: 10px;
     }
+    .row.grouped { margin-top: 2px; }
+    .row.own { flex-direction: row-reverse; }
 
-    .message.own {
-      align-self: flex-end;
-      background: #2563eb;
+    .avatar {
+      flex: 0 0 32px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .avatar.hidden { visibility: hidden; }
+
+    .bubble {
+      max-width: 78%;
+      padding: 8px 12px;
+      border-radius: 16px;
+      background: var(--bubble);
+      overflow-wrap: anywhere;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .row.own .bubble {
+      background: var(--bubble-own);
+      color: var(--bubble-own-text);
     }
 
-    .message .user {
-      display: block;
-      font-size: 0.7rem;
-      font-weight: 600;
-      opacity: 0.7;
+    .meta {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
       margin-bottom: 2px;
+      font-size: 0.72rem;
     }
+    .meta .name { font-weight: 600; }
+    .meta .time { opacity: 0.6; }
+
+    .system {
+      align-self: center;
+      margin: 10px 0 4px;
+      padding: 3px 12px;
+      border-radius: 999px;
+      background: var(--bubble);
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    #jump {
+      position: absolute;
+      left: 50%;
+      bottom: 130px;
+      transform: translateX(-50%);
+      display: none;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+    }
+
+    #typing {
+      min-height: 22px;
+      padding: 2px 18px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    #emoji-bar {
+      display: none;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    #emoji-bar.open { display: flex; }
+    #emoji-bar button {
+      padding: 4px 6px;
+      font-size: 22px;
+      background: transparent;
+      border-radius: 8px;
+    }
+    #emoji-bar button:hover { background: var(--bubble); }
 
     form {
       display: flex;
+      align-items: center;
       gap: 8px;
       padding: 12px;
-      border-top: 1px solid #dddfe2;
-      background: #ffffff;
+      border-top: 1px solid var(--border);
     }
 
-    #input {
+    input[type="text"] {
       flex: 1;
-      padding: 12px;
+      min-width: 0;
+      padding: 12px 16px;
       font-size: 16px;
-      border: 1px solid #ccd0d5;
-      border-radius: 20px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--bg);
+      color: var(--text);
       outline: none;
     }
-
-    #input:focus {
-      border-color: #2563eb;
-    }
+    input[type="text"]:focus { border-color: var(--accent); }
 
     button {
-      padding: 12px 20px;
-      font-size: 16px;
+      font-family: inherit;
       border: none;
-      border-radius: 20px;
-      background: #2563eb;
-      color: #ffffff;
       cursor: pointer;
     }
 
-    button:hover {
-      background: #1d4ed8;
+    .primary {
+      padding: 12px 22px;
+      font-size: 16px;
+      border-radius: 22px;
+      background: var(--accent);
+      color: #ffffff;
     }
+    .primary:hover { background: var(--accent-hover); }
+    .primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.55);
+    }
+    #modal.hidden { display: none; }
+
+    .modal-card {
+      width: 100%;
+      max-width: 360px;
+      padding: 24px;
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .modal-card h2 { margin: 0 0 6px; }
+    .modal-card p { margin: 0 0 16px; color: var(--muted); font-size: 0.9rem; }
+    .modal-card form { padding: 0; border: none; flex-direction: column; align-items: stretch; }
   </style>
 </head>
 <body>
   <div class="app">
     <header>
-      <h1>Live Socket Chat</h1>
+      <div class="title">
+        <h1>Live Socket Chat</h1>
+        <div class="status">
+          <span class="dot connecting" id="dot"></span>
+          <span id="status-text">Connecting...</span>
+        </div>
+      </div>
+      <button class="icon-btn" id="theme-btn" type="button" aria-label="Toggle theme">🌙</button>
     </header>
 
     <div id="messages"></div>
+    <button class="primary" id="jump" type="button">New messages ↓</button>
+
+    <div id="typing"></div>
+
+    <div id="emoji-bar"></div>
 
     <form id="form">
-      <input id="input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="500" />
-      <button type="submit">Send</button>
+      <button class="icon-btn" id="emoji-btn" type="button" aria-label="Emoji">😊</button>
+      <input id="input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="500" disabled />
+      <button class="primary" id="send" type="submit" disabled>Send</button>
     </form>
+  </div>
+
+  <div id="modal">
+    <div class="modal-card">
+      <h2>Welcome 👋</h2>
+      <p>Pick a nickname to join the chat.</p>
+      <form id="join-form">
+        <input id="name-input" type="text" placeholder="Your nickname" maxlength="20" autocomplete="off" />
+        <button class="primary" type="submit">Join chat</button>
+      </form>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
 
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
-    const messages = document.getElementById('messages');
+    const $ = (id) => document.getElementById(id);
+    const messagesEl = $('messages');
+    const form = $('form');
+    const input = $('input');
+    const sendBtn = $('send');
+    const jumpBtn = $('jump');
+    const typingEl = $('typing');
+    const emojiBar = $('emoji-bar');
+    const emojiBtn = $('emoji-btn');
+    const modal = $('modal');
+    const joinForm = $('join-form');
+    const nameInput = $('name-input');
+    const dot = $('dot');
+    const statusText = $('status-text');
+    const themeBtn = $('theme-btn');
 
+    let joined = false;
+    let myName = '';
+    let onlineCount = 0;
+    let onlineNames = [];
+    let isTyping = false;
+    let typingTimer = null;
+    let lastSender = null;
+    let lastTime = 0;
+    const typingUsers = new Map();
+
+    /* ---------- storage helpers ---------- */
+    function store(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+    }
+    function load(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    /* ---------- theme ---------- */
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    const savedTheme = load('theme');
+    applyTheme(savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    themeBtn.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      store('theme', next);
+    });
+
+    /* ---------- emoji picker ---------- */
+    const emojis = ['😀', '😂', '😍', '😎', '🤔', '😢', '😡', '👍', '👎', '🙏', '🔥', '🎉', '❤️', '💯', '👀', '🚀'];
+    emojis.forEach((emoji) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = emoji;
+      b.addEventListener('click', () => {
+        input.value += emoji;
+        input.focus();
+        handleTyping();
+      });
+      emojiBar.appendChild(b);
+    });
+    emojiBtn.addEventListener('click', () => emojiBar.classList.toggle('open'));
+
+    /* ---------- connection status ---------- */
+    function renderStatus() {
+      if (socket.connected) {
+        dot.className = 'dot online';
+        const label = onlineCount === 1 ? '1 online' : onlineCount + ' online';
+        statusText.textContent = joined ? label : 'Connected';
+        statusText.title = onlineNames.join(', ');
+      } else {
+        dot.className = 'dot connecting';
+        statusText.textContent = 'Reconnecting...';
+        statusText.title = '';
+      }
+    }
+
+    function setInputEnabled(enabled) {
+      input.disabled = !enabled;
+      sendBtn.disabled = !enabled;
+    }
+
+    /* ---------- scrolling ---------- */
+    function isNearBottom() {
+      return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+    }
+    function scrollToBottom(smooth) {
+      messagesEl.style.scrollBehavior = smooth ? 'smooth' : 'auto';
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      jumpBtn.style.display = 'none';
+    }
+    messagesEl.addEventListener('scroll', () => {
+      if (isNearBottom()) jumpBtn.style.display = 'none';
+    });
+    jumpBtn.addEventListener('click', () => scrollToBottom(true));
+
+    /* ---------- rendering ---------- */
+    function formatTime(ts) {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addChatMessage(msg) {
+      const own = msg.senderSocketId === socket.id;
+      const grouped = lastSender === msg.senderSocketId && msg.time - lastTime < 120000;
+      lastSender = msg.senderSocketId;
+      lastTime = msg.time;
+
+      const row = document.createElement('div');
+      row.className = 'row' + (own ? ' own' : '') + (grouped ? ' grouped' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar' + (grouped ? ' hidden' : '');
+      avatar.style.background = msg.color;
+      avatar.textContent = (msg.name || '?').charAt(0).toUpperCase();
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      if (!grouped) {
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = own ? 'You' : msg.name;
+
+        const time = document.createElement('span');
+        time.className = 'time';
+        time.textContent = formatTime(msg.time);
+
+        meta.appendChild(name);
+        meta.appendChild(time);
+        bubble.appendChild(meta);
+      }
+
+      const text = document.createElement('div');
+      text.textContent = msg.text;
+      bubble.appendChild(text);
+
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+    }
+
+    function addSystemMessage(text) {
+      lastSender = null;
+      const el = document.createElement('div');
+      el.className = 'system';
+      el.textContent = text;
+      messagesEl.appendChild(el);
+    }
+
+    function renderTyping() {
+      const names = Array.from(typingUsers.values());
+      if (names.length === 0) typingEl.textContent = '';
+      else if (names.length === 1) typingEl.textContent = names[0] + ' is typing...';
+      else if (names.length === 2) typingEl.textContent = names[0] + ' and ' + names[1] + ' are typing...';
+      else typingEl.textContent = 'Several people are typing...';
+    }
+
+    /* ---------- typing emit ---------- */
+    function stopTyping() {
+      clearTimeout(typingTimer);
+      if (isTyping) {
+        isTyping = false;
+        socket.emit('typing', false);
+      }
+    }
+    function handleTyping() {
+      if (!joined) return;
+      if (!isTyping) {
+        isTyping = true;
+        socket.emit('typing', true);
+      }
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(stopTyping, 2000);
+    }
+    input.addEventListener('input', handleTyping);
+
+    /* ---------- join flow ---------- */
+    nameInput.value = load('nickname') || '';
+    nameInput.focus();
+
+    joinForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      myName = nameInput.value.trim();
+      store('nickname', myName);
+      joined = true;
+      socket.emit('join', myName);
+      modal.classList.add('hidden');
+      setInputEnabled(true);
+      input.focus();
+      renderStatus();
+    });
+
+    /* ---------- send ---------- */
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text) return;
+      if (!text || !joined) return;
       socket.emit('chat-message', text);
+      stopTyping();
       input.value = '';
+      emojiBar.classList.remove('open');
       input.focus();
     });
 
-    socket.on('chat-message', (msg) => {
-      const item = document.createElement('div');
-      item.className = 'message' + (msg.senderSocketId === socket.id ? ' own' : '');
-
-      const user = document.createElement('span');
-      user.className = 'user';
-      user.textContent = msg.senderSocketId === socket.id ? 'You (' + msg.id + ')' : 'User ' + msg.id;
-
-      const text = document.createElement('span');
-      text.textContent = msg.text;
-
-      item.appendChild(user);
-      item.appendChild(text);
-      messages.appendChild(item);
-
-      messages.scrollTop = messages.scrollHeight;
+    /* ---------- socket events ---------- */
+    socket.on('connect', () => {
+      if (joined) socket.emit('join', myName); // re-join after a reconnect
+      renderStatus();
     });
+
+    socket.on('disconnect', () => {
+      typingUsers.clear();
+      renderTyping();
+      renderStatus();
+    });
+
+    socket.on('history', (list) => {
+      messagesEl.innerHTML = '';
+      lastSender = null;
+      list.forEach(addChatMessage);
+      scrollToBottom(false);
+    });
+
+    socket.on('chat-message', (msg) => {
+      const own = msg.senderSocketId === socket.id;
+      const stick = isNearBottom() || own;
+      typingUsers.delete(msg.senderSocketId);
+      renderTyping();
+      addChatMessage(msg);
+      if (stick) scrollToBottom(true);
+      else jumpBtn.style.display = 'block';
+    });
+
+    socket.on('system-message', (msg) => {
+      const stick = isNearBottom();
+      addSystemMessage(msg.text);
+      if (stick) scrollToBottom(true);
+    });
+
+    socket.on('online', (data) => {
+      onlineCount = data.count;
+      onlineNames = data.names;
+      renderStatus();
+    });
+
+    socket.on('typing', (data) => {
+      if (data.isTyping) typingUsers.set(data.id, data.name);
+      else typingUsers.delete(data.id);
+      renderTyping();
+    });
+
+    socket.on('rate-limited', () => {
+      addSystemMessage('Slow down! You are sending messages too fast.');
+      scrollToBottom(true);
+    });
+
+    renderStatus();
   </script>
 </body>
 </html>
