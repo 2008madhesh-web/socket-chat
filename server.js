@@ -417,6 +417,238 @@ function systemMessage(text) {
   io.emit('system-message', { text, time: Date.now() });
 }
 
+/* ------------------------------------------------------------------ */
+/* Disappearing messages + 1v1 games (Tic-Tac-Toe, Connect Four)       */
+/* ------------------------------------------------------------------ */
+
+const VANISH_MS = 10 * 1000; // how long a disappearing message lives
+const FORFEIT_GRACE_MS = 15 * 1000; // a refresh should not forfeit a game
+const disappearUsers = new Set(); // userIds who have disappear mode switched on
+const games = new Map(); // gameId -> game
+let nextGameId = 1;
+
+const TTT_LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6]
+];
+const C4_ROWS = 6;
+const C4_COLS = 7;
+
+// Adds the seconds left, so each browser can run its own countdown without trusting its clock
+function withTtl(m) {
+  return m.vanishAt ? { ...m, ttl: Math.max(0, m.vanishAt - Date.now()) } : m;
+}
+
+function scheduleVanish(msg) {
+  setTimeout(() => {
+    const i = history.findIndex((m) => m.id === msg.id);
+    if (i !== -1) history.splice(i, 1);
+    io.emit('message-vanish', { id: msg.id });
+  }, VANISH_MS).unref();
+}
+
+function tttWinner(board) {
+  for (const line of TTT_LINES) {
+    const [a, b, c] = line;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return line;
+  }
+  return null;
+}
+
+function c4Winner(board) {
+  const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  for (let r = 0; r < C4_ROWS; r++) {
+    for (let c = 0; c < C4_COLS; c++) {
+      const v = board[r * C4_COLS + c];
+      if (!v) continue;
+      for (const [dr, dc] of dirs) {
+        const line = [r * C4_COLS + c];
+        for (let k = 1; k < 4; k++) {
+          const rr = r + dr * k;
+          const cc = c + dc * k;
+          if (rr < 0 || rr >= C4_ROWS || cc < 0 || cc >= C4_COLS) break;
+          if (board[rr * C4_COLS + cc] !== v) break;
+          line.push(rr * C4_COLS + cc);
+        }
+        if (line.length === 4) return line;
+      }
+    }
+  }
+  return null;
+}
+
+// The only game fields the browser needs
+function publicGame(g) {
+  return {
+    id: g.id,
+    type: g.type,
+    status: g.status, // open | playing | won | draw | cancelled
+    challenger: g.challenger,
+    opponent: g.opponent,
+    board: g.board,
+    turn: g.turn,
+    winner: g.winner,
+    line: g.line,
+    lastMove: g.lastMove,
+    reason: g.reason
+  };
+}
+
+function broadcastGame(g) {
+  io.emit('game-update', publicGame(g));
+}
+
+// One open or running game per person keeps things simple and fair
+function userBusy(userId) {
+  for (const g of games.values()) {
+    if (g.status !== 'open' && g.status !== 'playing') continue;
+    if (g.challenger.id === userId || (g.opponent && g.opponent.id === userId)) return true;
+  }
+  return false;
+}
+
+// Forget games whose card has scrolled out of the chat history
+function pruneGames() {
+  const live = new Set(history.filter((m) => m.type === 'game').map((m) => m.gameId));
+  for (const id of games.keys()) {
+    if (!live.has(id)) games.delete(id);
+  }
+}
+
+function registerExtraHandlers(socket, userId, name) {
+  const fail = (message) => socket.emit('game-error', { message });
+  let lastCreate = 0;
+
+  // ----- disappear mode -----
+  socket.on('set-disappear', (on) => {
+    if (on === true) disappearUsers.add(userId);
+    else disappearUsers.delete(userId);
+    io.in(`user:${userId}`).emit('disappear-state', on === true);
+  });
+
+  // ----- challenges -----
+  socket.on('create-game', (type) => {
+    if (type !== 'ttt' && type !== 'c4') return;
+
+    const now = Date.now();
+    if (now - lastCreate < 2000) return fail('Slow down a little.');
+    if (userBusy(userId)) return fail('Finish or cancel your current game first.');
+    lastCreate = now;
+
+    const game = {
+      id: nextGameId++,
+      type,
+      status: 'open',
+      challenger: { id: userId, name },
+      opponent: null,
+      board: new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
+      turn: null,
+      winner: null,
+      line: null,
+      lastMove: null,
+      reason: null
+    };
+    games.set(game.id, game);
+
+    history.push({ type: 'game', gameId: game.id, time: now });
+    if (history.length > MAX_HISTORY) history.shift();
+    pruneGames();
+
+    io.emit('game-new', { game: publicGame(game), time: now });
+  });
+
+  socket.on('accept-game', (gameId) => {
+    const g = games.get(gameId);
+    if (!g || g.status !== 'open') return fail('That challenge is no longer open.');
+    if (g.challenger.id === userId) return fail("You can't accept your own challenge.");
+    if (userBusy(userId)) return fail('Finish or cancel your current game first.');
+
+    g.opponent = { id: userId, name };
+    g.status = 'playing';
+    g.turn = g.challenger.id; // the challenger goes first
+    broadcastGame(g);
+  });
+
+  socket.on('cancel-game', (gameId) => {
+    const g = games.get(gameId);
+    if (!g || g.status !== 'open' || g.challenger.id !== userId) return;
+    g.status = 'cancelled';
+    broadcastGame(g);
+  });
+
+  socket.on('resign-game', (gameId) => {
+    const g = games.get(gameId);
+    if (!g || g.status !== 'playing') return;
+    const isChallenger = g.challenger.id === userId;
+    if (!isChallenger && g.opponent.id !== userId) return;
+
+    g.status = 'won';
+    g.winner = isChallenger ? g.opponent.id : g.challenger.id;
+    g.reason = 'resigned';
+    broadcastGame(g);
+  });
+
+  // ----- moves: the server decides whose turn it is and whether the move is legal -----
+  socket.on('make-move', (data) => {
+    if (!data || typeof data !== 'object') return;
+    const g = games.get(data.gameId);
+    if (!g || g.status !== 'playing' || g.turn !== userId) return;
+
+    const index = data.index;
+    if (!Number.isInteger(index)) return;
+
+    const isChallenger = g.challenger.id === userId;
+
+    if (g.type === 'ttt') {
+      if (index < 0 || index > 8 || g.board[index]) return;
+      g.board[index] = isChallenger ? 'X' : 'O';
+      g.lastMove = index;
+      g.line = tttWinner(g.board);
+    } else {
+      // Connect Four: index is the column, the disc falls to the lowest free row
+      if (index < 0 || index >= C4_COLS) return;
+      let row = -1;
+      for (let r = C4_ROWS - 1; r >= 0; r--) {
+        if (!g.board[r * C4_COLS + index]) { row = r; break; }
+      }
+      if (row === -1) return; // column is full
+      const cell = row * C4_COLS + index;
+      g.board[cell] = isChallenger ? 'R' : 'Y';
+      g.lastMove = cell;
+      g.line = c4Winner(g.board);
+    }
+
+    if (g.line) {
+      g.status = 'won';
+      g.winner = userId;
+    } else if (g.board.every(Boolean)) {
+      g.status = 'draw';
+    } else {
+      g.turn = isChallenger ? g.opponent.id : g.challenger.id;
+    }
+    broadcastGame(g);
+  });
+
+  // If someone really leaves (not just a refresh), end their games
+  socket.on('disconnect', () => {
+    setTimeout(() => {
+      if (presence.has(userId)) return;
+      for (const g of games.values()) {
+        if (g.status === 'open' && g.challenger.id === userId) {
+          g.status = 'cancelled';
+          broadcastGame(g);
+        } else if (g.status === 'playing' && (g.challenger.id === userId || g.opponent.id === userId)) {
+          g.status = 'won';
+          g.winner = g.challenger.id === userId ? g.opponent.id : g.challenger.id;
+          g.reason = 'left';
+          broadcastGame(g);
+        }
+      }
+    }, FORFEIT_GRACE_MS).unref();
+  });
+}
+
 io.on('connection', (socket) => {
   const user = socket.request.user; // set by Passport during the handshake
   const userId = user.id;
@@ -427,7 +659,9 @@ io.on('connection', (socket) => {
   // Every tab of the same user joins one private room (used for logout and typing)
   socket.join(`user:${userId}`);
 
-  socket.emit('history', history);
+  socket.emit('games', Array.from(games.values()).map(publicGame));
+  socket.emit('history', history.map(withTtl));
+  registerExtraHandlers(socket, userId, name);
 
   // Count tabs so a user with two tabs open is shown only once
   const existing = presence.get(userId);
@@ -463,13 +697,16 @@ io.on('connection', (socket) => {
       avatar: socket.data.avatar !== undefined ? socket.data.avatar : avatar,
       color,
       text: message,
-      time: now
+      time: now,
+      vanishAt: disappearUsers.has(userId) ? now + VANISH_MS : null,
+      ttl: disappearUsers.has(userId) ? VANISH_MS : 0
     };
 
     history.push(msg);
     if (history.length > MAX_HISTORY) history.shift();
 
     io.emit('chat-message', msg);
+    if (msg.vanishAt) scheduleVanish(msg);
     socket.broadcast.except(`user:${userId}`).emit('typing', { id: userId, name, isTyping: false });
   });
 
