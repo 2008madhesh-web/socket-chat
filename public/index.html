@@ -1009,68 +1009,42 @@
     }
     @media (max-width: 400px) { .me { display: none; } }
 
-    /* ================= animated chat background (pure CSS, compositor-only) ================= */
+    /* ================= background: a quiet dot grid and one slow light ================= */
+    @property --lx { syntax: "<percentage>"; inherits: false; initial-value: 18%; }
+    @property --ly { syntax: "<percentage>"; inherits: false; initial-value: 28%; }
     :root {
-      --orb1: rgba(221, 74, 118, 0.30);
-      --orb2: rgba(124, 92, 255, 0.24);
-      --orb3: rgba(56, 189, 248, 0.17);
-      --bub: rgba(255, 255, 255, 0.24);
-      --bubhi: rgba(255, 255, 255, 0.30);
+      --dot: rgba(255, 255, 255, 0.07);
+      --dot-lit: rgba(236, 90, 133, 0.8);
     }
     :root[data-theme="light"] {
-      --orb1: rgba(255, 140, 180, 0.55);
-      --orb2: rgba(165, 145, 255, 0.45);
-      --orb3: rgba(120, 205, 255, 0.40);
-      --bub: rgba(221, 74, 118, 0.30);
-      --bubhi: rgba(221, 74, 118, 0.30);
+      --dot: rgba(60, 40, 80, 0.11);
+      --dot-lit: rgba(221, 74, 118, 0.75);
     }
     .app { isolation: isolate; }
-    .chat-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; contain: layout paint style; }
-    .orb {
+    .chat-bg {
       position: absolute;
-      width: min(78%, 440px);
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background: radial-gradient(circle, var(--c) 0%, transparent 66%);
-      will-change: transform;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+      contain: layout paint style;
+      background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.6px);
+      background-size: 26px 26px;
     }
-    .orb.o1 { --c: var(--orb1); left: -18%; top: -12%; animation: drift1 24s ease-in-out infinite alternate; }
-    .orb.o2 { --c: var(--orb2); right: -22%; top: 26%; animation: drift2 30s ease-in-out infinite alternate; }
-    .orb.o3 { --c: var(--orb3); left: 10%; bottom: -26%; animation: drift3 36s ease-in-out infinite alternate; }
-    @keyframes drift1 { to { transform: translate3d(40%, 32%, 0) scale(1.25); } }
-    @keyframes drift2 { to { transform: translate3d(-42%, -28%, 0) scale(0.9); } }
-    @keyframes drift3 { to { transform: translate3d(32%, -36%, 0) scale(1.2); } }
-    .chat-bg i {
+    /* the same grid in the accent colour, revealed only under a soft spotlight that wanders */
+    .chat-bg::after {
+      content: "";
       position: absolute;
-      left: var(--x);
-      bottom: -30px;
-      width: var(--s);
-      height: var(--s);
-      border-radius: 50%;
-      border: 1.5px solid var(--bub);
-      background: radial-gradient(circle at 30% 28%, var(--bubhi) 0, var(--bubhi) 14%, transparent 16%);
-      opacity: 0;
-      will-change: transform, opacity;
-      animation: rise var(--t) linear var(--d) infinite;
+      inset: 0;
+      background-image: radial-gradient(circle, var(--dot-lit) 1.3px, transparent 2px);
+      background-size: 26px 26px;
+      -webkit-mask-image: radial-gradient(circle 170px at var(--lx) var(--ly), #000 0%, transparent 100%);
+      mask-image: radial-gradient(circle 170px at var(--lx) var(--ly), #000 0%, transparent 100%);
+      animation: lightX 19s ease-in-out infinite alternate, lightY 27s ease-in-out infinite alternate;
     }
-    @keyframes rise {
-      0% { transform: translate3d(0, 0, 0) scale(0.7); opacity: 0; }
-      12% { opacity: 1; }
-      50% { transform: translate3d(var(--dx), -560px, 0) scale(1); }
-      88% { opacity: 1; }
-      100% { transform: translate3d(0, -1200px, 0) scale(1.1); opacity: 0; }
-    }
-    .chat-bg i:nth-of-type(1) { --x: 4.9%; --s: 10px; --t: 23s; --d: -20s; --dx: -16px; }
-    .chat-bg i:nth-of-type(2) { --x: 17.3%; --s: 8px; --t: 22s; --d: -18s; --dx: -30px; }
-    .chat-bg i:nth-of-type(3) { --x: 23.1%; --s: 8px; --t: 23s; --d: -13s; --dx: -21px; }
-    .chat-bg i:nth-of-type(4) { --x: 31.7%; --s: 14px; --t: 17s; --d: -3s; --dx: -34px; }
-    .chat-bg i:nth-of-type(5) { --x: 44.4%; --s: 8px; --t: 26s; --d: -18s; --dx: 15px; }
-    .chat-bg i:nth-of-type(6) { --x: 55.9%; --s: 8px; --t: 25s; --d: -4s; --dx: 27px; }
-    .chat-bg i:nth-of-type(7) { --x: 60.3%; --s: 8px; --t: 26s; --d: -9s; --dx: -17px; }
-    .chat-bg i:nth-of-type(8) { --x: 72.3%; --s: 22px; --t: 20s; --d: -11s; --dx: -31px; }
-    .chat-bg i:nth-of-type(9) { --x: 82.5%; --s: 18px; --t: 17s; --d: -6s; --dx: 31px; }
-    .chat-bg i:nth-of-type(10) { --x: 90.2%; --s: 12px; --t: 24s; --d: -18s; --dx: 25px; }
-    @media (prefers-reduced-motion: reduce) { .chat-bg .orb, .chat-bg i { animation: none !important; } }
+    @keyframes lightX { from { --lx: 6%; } to { --lx: 94%; } }
+    @keyframes lightY { from { --ly: 8%; } to { --ly: 92%; } }
+    @media (prefers-reduced-motion: reduce) { .chat-bg::after { animation: none; } }
 
     /* ================= result line that replaces a finished game ================= */
     .system.result { background: color-mix(in srgb, var(--accent) 14%, var(--field)); color: var(--text); font-weight: 600; }
@@ -1109,6 +1083,131 @@
     .sz:active { transform: scale(0.92); }
     .sz i { display: block; width: var(--d); height: var(--d); border-radius: 50%; background: var(--text); }
     .sz.sel { box-shadow: 0 0 0 2px var(--accent); }
+
+    /* ================= reply to a message ================= */
+    #messages { overflow-x: hidden; }
+    .row { position: relative; touch-action: pan-y; transition: transform 0.35s var(--spring); }
+    .row.swiping { transition: none; }
+    .swipe-ico {
+      position: absolute;
+      left: -44px;
+      top: 50%;
+      width: 32px;
+      height: 32px;
+      margin-top: -16px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--field);
+      color: var(--accent-hover);
+      opacity: var(--p, 0);
+      transform: scale(calc(0.5 + var(--p, 0) * 0.5));
+      transition: background-color 0.2s ease, color 0.2s ease;
+      pointer-events: none;
+    }
+    .swipe-ico.ready { background: var(--accent); color: var(--on-accent); }
+    .swipe-ico svg, .reply-btn svg { width: 17px; height: 17px; display: block; }
+
+    .reply-btn {
+      display: none;
+      flex: 0 0 28px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      align-self: center;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--field);
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity 0.2s ease, color 0.2s ease;
+    }
+    .reply-btn svg { width: 15px; height: 15px; }
+    .reply-btn:hover { color: var(--text); }
+    @media (hover: hover) and (pointer: fine) {
+      .reply-btn { display: grid; }
+      .row:hover .reply-btn, .reply-btn:focus-visible { opacity: 1; }
+    }
+
+    .quote {
+      display: block;
+      width: 100%;
+      margin: 0 0 6px;
+      padding: 6px 10px;
+      border-left: 3px solid var(--accent-hover);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      color: inherit;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      text-align: left;
+      white-space: normal;
+    }
+    :root[data-theme="light"] .quote { background: rgba(60, 40, 80, 0.07); }
+    .row.own .quote { background: rgba(0, 0, 0, 0.18); border-left-color: rgba(255, 255, 255, 0.85); }
+    .quote .q-name { display: block; margin-bottom: 1px; font-size: 0.74rem; font-weight: 700; color: var(--accent-hover); }
+    .row.own .quote .q-name { color: #ffffff; }
+    .quote .q-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+    .quote .q-text.gone { font-style: italic; opacity: 0.6; }
+    .row.flash .bubble { animation: flashBubble 1.2s ease; }
+    @keyframes flashBubble { 0%, 100% { filter: none; } 25% { filter: brightness(1.55); } }
+
+    #reply-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin: 0 14px 8px;
+      padding: 8px 8px 8px 12px;
+      border-left: 3px solid var(--accent);
+      border-radius: 12px;
+      background: var(--field);
+    }
+    #reply-bar.show { display: flex; animation: replyIn 0.3s var(--ease) both; }
+    @keyframes replyIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .rb-text { min-width: 0; flex: 1; font-size: 0.8rem; }
+    .rb-name { display: block; font-size: 0.74rem; font-weight: 700; color: var(--accent-hover); }
+    .rb-snip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+    #reply-close { flex: 0 0 28px; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 50%; background: transparent; color: var(--muted); }
+    #reply-close:hover { color: var(--text); background: var(--bubble); }
+    #reply-close svg { width: 15px; height: 15px; }
+
+    /* ================= who is online ================= */
+    .pill { cursor: pointer; -webkit-user-select: none; user-select: none; transition: background-color 0.25s ease; }
+    .pill:hover { background: var(--bubble); }
+    .pill:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+    .pill .chev { width: 12px; height: 12px; opacity: 0.55; transition: transform 0.35s var(--spring); }
+    .pill[aria-expanded="true"] .chev { transform: rotate(180deg); }
+    .online-pop {
+      position: absolute;
+      z-index: 15;
+      top: 66px;
+      right: 12px;
+      width: min(280px, calc(100% - 24px));
+      max-height: min(60%, 380px);
+      display: flex;
+      flex-direction: column;
+      padding: 8px;
+      border-radius: 20px;
+      background: var(--menu-bg);
+      border: 1px solid var(--border);
+      box-shadow: var(--pop-shadow);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-8px) scale(0.96);
+      transform-origin: top right;
+      transition: opacity 0.25s ease, transform 0.4s var(--spring), visibility 0.25s;
+    }
+    .online-pop.open { opacity: 1; visibility: visible; transform: none; }
+    .op-head { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 10px 10px; margin-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+    .op-head span { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+    .op-list { margin: 0; padding: 0; list-style: none; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    .op-item { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 10px; border-radius: 14px; }
+    .op-item .avatar { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%; font-size: 0.85rem; }
+    .op-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; font-weight: 600; }
+    .op-you { color: var(--muted); font-size: 0.74rem; font-weight: 500; }
+    .op-live { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--online); }
+    .op-empty { padding: 12px 10px; color: var(--muted); font-size: 0.85rem; }
+    @media (max-width: 420px) { .online-pop { top: 58px; } }
   </style>
 </head>
 <body>
@@ -1174,7 +1273,7 @@
   <!-- ================= CHAT ROOM ================= -->
   <div id="chat-view" class="view hidden">
     <div class="app">
-      <div class="chat-bg" aria-hidden="true"><b class="orb o1"></b><b class="orb o2"></b><b class="orb o3"></b><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="chat-bg" aria-hidden="true"></div>
       <header>
         <div class="brand">
           <div class="logo" aria-hidden="true">
@@ -1187,9 +1286,10 @@
         </div>
 
         <div class="header-right">
-          <div class="pill" id="pill">
+          <div class="pill" id="pill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-controls="online-pop" title="See who is online">
             <span class="dot" id="dot"></span>
             <span id="status-text">Connecting...</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
           </div>
           <div class="me" id="me">
             <span id="me-avatar"></span>
@@ -1225,6 +1325,11 @@
         </div>
       </header>
 
+      <div class="online-pop" id="online-pop" role="dialog" aria-label="People online" aria-hidden="true">
+        <div class="op-head"><strong>Online now</strong><span id="op-count"></span></div>
+        <ul class="op-list" id="op-list"></ul>
+      </div>
+
       <div id="messages"></div>
 
       <button class="primary" id="jump" type="button">New messages ↓</button>
@@ -1232,6 +1337,13 @@
       <div id="game-toast" class="toast" role="status"></div>
 
       <div id="typing"><span class="dots"><i></i><i></i><i></i></span><span id="typing-text"></span></div>
+
+      <div id="reply-bar" role="status">
+        <div class="rb-text"><span class="rb-name" id="rb-name"></span><span class="rb-snip" id="rb-snip"></span></div>
+        <button type="button" id="reply-close" aria-label="Cancel reply">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
 
       <form class="composer" id="form">
         <button class="icon-btn" id="action-btn" type="button" aria-label="Open actions" title="Actions" aria-haspopup="menu" aria-expanded="false">
@@ -1327,6 +1439,13 @@
       const dpSave = $('dp-save');
       const dpCancel = $('dp-cancel');
       const vanishBtn = $('vanish-btn');
+      const onlinePop = $('online-pop');
+      const opList = $('op-list');
+      const opCount = $('op-count');
+      const replyBar = $('reply-bar');
+      const rbName = $('rb-name');
+      const rbSnip = $('rb-snip');
+      const replyClose = $('reply-close');
 
       /* ---------- state ---------- */
       let me = null; // the logged-in user
@@ -1335,7 +1454,8 @@
       let hasConnected = false;
       let focusOnConnect = false;
       let onlineCount = null;
-      let onlineNames = [];
+      let onlineUsers = [];
+      let replyTo = null;
       let isTyping = false;
       let typingTimer = null;
       let limitTimer = null;
@@ -1490,7 +1610,9 @@
         lastSender = null;
         lastTime = 0;
         onlineCount = null;
-        onlineNames = [];
+        onlineUsers = [];
+        cancelReply();
+        setOnlinePop(false);
         hasConnected = false;
         input.value = '';
         setActionMenu(false);
@@ -1563,11 +1685,10 @@
           dot.className = 'dot online';
           if (onlineCount === null) statusText.textContent = 'Connected';
           else statusText.textContent = onlineCount === 1 ? '1 online' : onlineCount + ' online';
-          pill.title = onlineNames.join(', ');
+          if (onlinePop.classList.contains('open')) renderOnlineList();
         } else {
           dot.className = 'dot';
           statusText.textContent = hasConnected ? 'Reconnecting...' : 'Connecting...';
-          pill.title = '';
         }
       }
 
@@ -1654,7 +1775,24 @@
           bubble.appendChild(meta);
         }
 
+        if (msg.reply) {
+          const q = document.createElement('button');
+          q.type = 'button';
+          q.className = 'quote';
+          const qn = document.createElement('span');
+          qn.className = 'q-name';
+          qn.textContent = Boolean(me) && msg.reply.userId === me.id ? 'You' : msg.reply.name;
+          const qt = document.createElement('span');
+          qt.className = 'q-text' + (msg.reply.text ? '' : ' gone');
+          qt.textContent = msg.reply.text || 'Disappearing message';
+          q.appendChild(qn);
+          q.appendChild(qt);
+          q.addEventListener('click', () => jumpToMessage(msg.reply.id));
+          bubble.appendChild(q);
+        }
+
         const text = document.createElement('div');
+        text.className = 'msg-text';
         text.textContent = msg.text; // textContent keeps user input from injecting HTML
         bubble.appendChild(text);
 
@@ -1668,6 +1806,17 @@
 
         row.appendChild(avatar);
         row.appendChild(bubble);
+
+        // Desktop: a small reply button next to the bubble (touch devices swipe instead)
+        const replyBtn = document.createElement('button');
+        replyBtn.type = 'button';
+        replyBtn.className = 'reply-btn';
+        replyBtn.setAttribute('aria-label', 'Reply');
+        replyBtn.title = 'Reply';
+        replyBtn.innerHTML = REPLY_ICON;
+        replyBtn.addEventListener('click', () => startReply(row));
+        row.appendChild(replyBtn);
+
         messagesEl.appendChild(row);
       }
 
@@ -1720,7 +1869,8 @@
         const text = input.value.trim();
         if (!text || !socket.connected) return;
 
-        socket.emit('chat-message', text);
+        socket.emit('chat-message', replyTo ? { text, replyTo: replyTo.id } : text);
+        cancelReply();
         stopTyping();
         input.value = '';
         updateSend();
@@ -1797,7 +1947,7 @@
       socket.on('online', (data) => {
         const changed = onlineCount !== null && onlineCount !== data.count;
         onlineCount = data.count;
-        onlineNames = data.names;
+        onlineUsers = Array.isArray(data.users) ? data.users : [];
         renderStatus();
         if (changed) {
           pill.classList.remove('bump');
@@ -1857,6 +2007,7 @@
 
       /* ---------- options menu ---------- */
       function setMenu(open) {
+        if (open) setOnlinePop(false);
         menu.classList.toggle('open', open);
         menu.setAttribute('aria-hidden', String(!open));
         menuBtn.setAttribute('aria-expanded', String(open));
@@ -1945,6 +2096,184 @@
       }
       socket.on('avatar-updated', (d) => applyAvatarUpdate(d.userId, d.avatar));
 
+      /* ================================================================ */
+      /* Online list, reply, swipe-to-reply                               */
+      /* ================================================================ */
+
+      const REPLY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>';
+
+      /* ---------- who is online ---------- */
+      function renderOnlineList() {
+        opCount.textContent = onlineCount === null ? '' : String(onlineCount);
+        opList.textContent = '';
+        if (onlineUsers.length === 0) {
+          const li = document.createElement('li');
+          li.className = 'op-empty';
+          li.textContent = 'Connecting...';
+          opList.appendChild(li);
+          return;
+        }
+        const myId = me ? me.id : null;
+        const list = onlineUsers.slice().sort((a, b) => {
+          if (a.id === myId) return -1;
+          if (b.id === myId) return 1;
+          return a.name.localeCompare(b.name);
+        });
+        list.forEach((u) => {
+          const li = document.createElement('li');
+          li.className = 'op-item';
+          li.appendChild(buildAvatar(u.name, u.color, u.avatar));
+          const name = document.createElement('span');
+          name.className = 'op-name';
+          name.textContent = u.name;
+          if (u.id === myId) {
+            const you = document.createElement('span');
+            you.className = 'op-you';
+            you.textContent = ' (you)';
+            name.appendChild(you);
+          }
+          const live = document.createElement('span');
+          live.className = 'op-live';
+          li.appendChild(name);
+          li.appendChild(live);
+          opList.appendChild(li);
+        });
+      }
+
+      function setOnlinePop(open) {
+        if (open) {
+          setMenu(false);
+          setActionMenu(false);
+          renderOnlineList();
+        }
+        onlinePop.classList.toggle('open', open);
+        onlinePop.setAttribute('aria-hidden', String(!open));
+        pill.setAttribute('aria-expanded', String(open));
+      }
+      pill.addEventListener('click', () => setOnlinePop(!onlinePop.classList.contains('open')));
+      pill.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setOnlinePop(!onlinePop.classList.contains('open'));
+        }
+      });
+      document.addEventListener('click', (e) => {
+        if (!onlinePop.contains(e.target) && !pill.contains(e.target)) setOnlinePop(false);
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { setOnlinePop(false); cancelReply(); }
+      });
+
+      /* ---------- reply ---------- */
+      function startReply(row) {
+        const mid = Number(row.dataset.mid);
+        if (!mid) return;
+        const own = row.classList.contains('own');
+        const bubble = row.querySelector('.bubble');
+        const ephemeral = bubble.classList.contains('ephemeral');
+        const textEl = row.querySelector('.msg-text');
+        replyTo = {
+          id: mid,
+          name: own ? 'yourself' : row.dataset.name,
+          text: ephemeral || !textEl ? '' : textEl.textContent.slice(0, 100)
+        };
+        const stick = isNearBottom();
+        rbName.textContent = 'Replying to ' + replyTo.name;
+        rbSnip.textContent = replyTo.text || 'Disappearing message';
+        replyBar.classList.add('show');
+        if (stick) scrollToBottom(false);
+        input.focus();
+      }
+
+      function cancelReply() {
+        replyTo = null;
+        replyBar.classList.remove('show');
+      }
+      replyClose.addEventListener('click', () => { cancelReply(); input.focus(); });
+
+      function jumpToMessage(id) {
+        const el = messagesEl.querySelector('.row[data-mid="' + id + '"]');
+        if (!el) return showToast('That message is gone.');
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 1300);
+      }
+
+      /* ---------- swipe right to reply (touch and pen) ---------- */
+      (function swipeToReply() {
+        const THRESHOLD = 52; // how far to drag before it counts
+        const MAX = 72;       // how far the message is allowed to travel
+        let row = null;
+        let ico = null;
+        let pointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let dx = 0;
+        let decided = false;
+        let active = false;
+        let buzzed = false;
+
+        function finish(commit) {
+          if (!row) return;
+          const r = row;
+          const i = ico;
+          const go = commit && active && dx >= THRESHOLD;
+          r.classList.remove('swiping');
+          r.style.transform = '';
+          if (i) setTimeout(() => i.remove(), 320);
+          row = ico = pointerId = null;
+          dx = 0;
+          decided = active = buzzed = false;
+          if (go) startReply(r);
+        }
+
+        messagesEl.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' || !e.isPrimary) return;
+          const r = e.target.closest('.row');
+          if (!r || !r.dataset.mid || r.classList.contains('vanishing')) return;
+          row = r;
+          pointerId = e.pointerId;
+          startX = e.clientX;
+          startY = e.clientY;
+          dx = 0;
+          decided = active = buzzed = false;
+        });
+
+        messagesEl.addEventListener('pointermove', (e) => {
+          if (!row || e.pointerId !== pointerId) return;
+          const mx = e.clientX - startX;
+          const my = e.clientY - startY;
+          if (!decided) {
+            if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+            decided = true;
+            active = mx > 0 && Math.abs(mx) > Math.abs(my) * 1.4;
+            if (!active) { row = null; return; } // it is a normal vertical scroll
+            row.classList.add('swiping');
+            ico = document.createElement('span');
+            ico.className = 'swipe-ico';
+            ico.innerHTML = REPLY_ICON;
+            row.appendChild(ico);
+          }
+          dx = Math.max(0, mx);
+          const shown = dx < THRESHOLD ? dx : Math.min(MAX, THRESHOLD + (dx - THRESHOLD) * 0.35);
+          row.style.transform = 'translateX(' + shown + 'px)';
+          ico.style.setProperty('--p', Math.min(1, shown / THRESHOLD).toFixed(2));
+          const ready = dx >= THRESHOLD;
+          ico.classList.toggle('ready', ready);
+          if (ready && !buzzed) {
+            buzzed = true;
+            if (navigator.vibrate) navigator.vibrate(12);
+          } else if (!ready) {
+            buzzed = false;
+          }
+        });
+
+        messagesEl.addEventListener('pointerup', () => finish(true));
+        messagesEl.addEventListener('pointercancel', () => finish(false));
+      })();
+
       /* ---------- keep the UI fixed when the mobile keyboard opens ---------- */
       (function keyboardSafeLayout() {
         const vv = window.visualViewport;
@@ -1983,6 +2312,7 @@
 
       /* ---------- action menu ---------- */
       function setActionMenu(open) {
+        if (open) setOnlinePop(false);
         actionMenu.classList.toggle('open', open);
         actionBtn.classList.toggle('open', open);
         actionMenu.setAttribute('aria-hidden', String(!open));
