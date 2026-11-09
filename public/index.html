@@ -1008,6 +1008,107 @@
       .icon-btn { width: 40px; height: 40px; }
     }
     @media (max-width: 400px) { .me { display: none; } }
+
+    /* ================= animated chat background (pure CSS, compositor-only) ================= */
+    :root {
+      --orb1: rgba(221, 74, 118, 0.30);
+      --orb2: rgba(124, 92, 255, 0.24);
+      --orb3: rgba(56, 189, 248, 0.17);
+      --bub: rgba(255, 255, 255, 0.24);
+      --bubhi: rgba(255, 255, 255, 0.30);
+    }
+    :root[data-theme="light"] {
+      --orb1: rgba(255, 140, 180, 0.55);
+      --orb2: rgba(165, 145, 255, 0.45);
+      --orb3: rgba(120, 205, 255, 0.40);
+      --bub: rgba(221, 74, 118, 0.30);
+      --bubhi: rgba(221, 74, 118, 0.30);
+    }
+    .app { isolation: isolate; }
+    .chat-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; contain: layout paint style; }
+    .orb {
+      position: absolute;
+      width: min(78%, 440px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--c) 0%, transparent 66%);
+      will-change: transform;
+    }
+    .orb.o1 { --c: var(--orb1); left: -18%; top: -12%; animation: drift1 24s ease-in-out infinite alternate; }
+    .orb.o2 { --c: var(--orb2); right: -22%; top: 26%; animation: drift2 30s ease-in-out infinite alternate; }
+    .orb.o3 { --c: var(--orb3); left: 10%; bottom: -26%; animation: drift3 36s ease-in-out infinite alternate; }
+    @keyframes drift1 { to { transform: translate3d(40%, 32%, 0) scale(1.25); } }
+    @keyframes drift2 { to { transform: translate3d(-42%, -28%, 0) scale(0.9); } }
+    @keyframes drift3 { to { transform: translate3d(32%, -36%, 0) scale(1.2); } }
+    .chat-bg i {
+      position: absolute;
+      left: var(--x);
+      bottom: -30px;
+      width: var(--s);
+      height: var(--s);
+      border-radius: 50%;
+      border: 1.5px solid var(--bub);
+      background: radial-gradient(circle at 30% 28%, var(--bubhi) 0, var(--bubhi) 14%, transparent 16%);
+      opacity: 0;
+      will-change: transform, opacity;
+      animation: rise var(--t) linear var(--d) infinite;
+    }
+    @keyframes rise {
+      0% { transform: translate3d(0, 0, 0) scale(0.7); opacity: 0; }
+      12% { opacity: 1; }
+      50% { transform: translate3d(var(--dx), -560px, 0) scale(1); }
+      88% { opacity: 1; }
+      100% { transform: translate3d(0, -1200px, 0) scale(1.1); opacity: 0; }
+    }
+    .chat-bg i:nth-of-type(1) { --x: 4.9%; --s: 10px; --t: 23s; --d: -20s; --dx: -16px; }
+    .chat-bg i:nth-of-type(2) { --x: 17.3%; --s: 8px; --t: 22s; --d: -18s; --dx: -30px; }
+    .chat-bg i:nth-of-type(3) { --x: 23.1%; --s: 8px; --t: 23s; --d: -13s; --dx: -21px; }
+    .chat-bg i:nth-of-type(4) { --x: 31.7%; --s: 14px; --t: 17s; --d: -3s; --dx: -34px; }
+    .chat-bg i:nth-of-type(5) { --x: 44.4%; --s: 8px; --t: 26s; --d: -18s; --dx: 15px; }
+    .chat-bg i:nth-of-type(6) { --x: 55.9%; --s: 8px; --t: 25s; --d: -4s; --dx: 27px; }
+    .chat-bg i:nth-of-type(7) { --x: 60.3%; --s: 8px; --t: 26s; --d: -9s; --dx: -17px; }
+    .chat-bg i:nth-of-type(8) { --x: 72.3%; --s: 22px; --t: 20s; --d: -11s; --dx: -31px; }
+    .chat-bg i:nth-of-type(9) { --x: 82.5%; --s: 18px; --t: 17s; --d: -6s; --dx: 31px; }
+    .chat-bg i:nth-of-type(10) { --x: 90.2%; --s: 12px; --t: 24s; --d: -18s; --dx: 25px; }
+    @media (prefers-reduced-motion: reduce) { .chat-bg .orb, .chat-bg i { animation: none !important; } }
+
+    /* ================= result line that replaces a finished game ================= */
+    .system.result { background: color-mix(in srgb, var(--accent) 14%, var(--field)); color: var(--text); font-weight: 600; }
+
+    /* ================= drawing game ================= */
+    .action-ico.dr { background: linear-gradient(135deg, #22c55e, #14b8a6); }
+    .game-card[data-type="draw"] .g-badge { background: linear-gradient(135deg, #22c55e, #14b8a6); }
+    .disc.d0 { background: radial-gradient(circle at 35% 30%, #93c5fd, #3b82f6 70%); }
+    .disc.d1 { background: radial-gradient(circle at 35% 30%, #d8b4fe, #a855f7 70%); }
+    .paper {
+      border-radius: 16px;
+      overflow: hidden;
+      background: #fffdf8 radial-gradient(circle, rgba(0, 0, 0, 0.09) 1px, transparent 1.3px) 0 0 / 18px 18px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+    .paper canvas { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; touch-action: none; }
+    .paper canvas.live { cursor: crosshair; }
+    .tools { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .swatches { display: flex; justify-content: space-between; padding: 0 2px; }
+    .sw {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 50%;
+      background: var(--c);
+      box-shadow: 0 0 0 2px var(--bubble);
+      transition: transform 0.3s var(--spring), box-shadow 0.25s ease;
+    }
+    .sw:hover { transform: scale(1.08); }
+    .sw.sel { transform: scale(1.14); box-shadow: 0 0 0 3px var(--bubble), 0 0 0 5px var(--text); }
+    .sw:first-child { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.3), 0 0 0 2px var(--bubble); }
+    .sw.sel:first-child { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.3), 0 0 0 3px var(--bubble), 0 0 0 5px var(--text); }
+    .tool-row { display: flex; align-items: center; gap: 8px; }
+    .sizes { display: flex; gap: 6px; margin-right: auto; }
+    .sz { width: 36px; height: 36px; padding: 0; border-radius: 12px; display: grid; place-items: center; background: var(--panel); transition: box-shadow 0.2s ease, transform 0.25s var(--spring); }
+    .sz:active { transform: scale(0.92); }
+    .sz i { display: block; width: var(--d); height: var(--d); border-radius: 50%; background: var(--text); }
+    .sz.sel { box-shadow: 0 0 0 2px var(--accent); }
   </style>
 </head>
 <body>
@@ -1073,6 +1174,7 @@
   <!-- ================= CHAT ROOM ================= -->
   <div id="chat-view" class="view hidden">
     <div class="app">
+      <div class="chat-bg" aria-hidden="true"><b class="orb o1"></b><b class="orb o2"></b><b class="orb o3"></b><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <header>
         <div class="brand">
           <div class="logo" aria-hidden="true">
@@ -1144,6 +1246,10 @@
           <button class="action-item" type="button" role="menuitem" data-game="c4">
             <span class="action-ico c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="3.2"/><circle cx="17" cy="7" r="3.2" fill="currentColor"/><circle cx="7" cy="17" r="3.2" fill="currentColor"/><circle cx="17" cy="17" r="3.2"/></svg></span>
             <span class="action-text"><strong>Connect Four Challenge</strong><span>Drop discs, connect four in a row</span></span>
+          </button>
+          <button class="action-item" type="button" role="menuitem" data-game="draw">
+            <span class="action-ico dr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/></svg></span>
+            <span class="action-text"><strong>Draw Together</strong><span>Sketch on a shared canvas</span></span>
           </button>
         </div>
         <input id="input" type="text" placeholder="Write a message" autocomplete="off" maxlength="500" disabled />
@@ -1565,11 +1671,11 @@
         messagesEl.appendChild(row);
       }
 
-      function addSystemMessage(text) {
+      function addSystemMessage(text, isResult) {
         clearEmpty();
         lastSender = null;
         const el = document.createElement('div');
-        el.className = 'system';
+        el.className = 'system' + (isResult ? ' result' : '');
         el.textContent = text;
         messagesEl.appendChild(el);
       }
@@ -1662,6 +1768,8 @@
           if (m.type === 'game') {
             const state = gameStates.get(m.gameId);
             if (state) addGameCard(state, false);
+          } else if (m.type === 'result') {
+            addSystemMessage(m.text, true);
           } else {
             addChatMessage(m, false);
           }
@@ -1899,11 +2007,12 @@
       });
 
       /* ---------- game cards ---------- */
-      const GAME_LABEL = { ttt: 'Tic-Tac-Toe', c4: 'Connect Four' };
+      const GAME_LABEL = { ttt: 'Tic-Tac-Toe', c4: 'Connect Four', draw: 'Drawing' };
       const GAME_ICON = {
         ttt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>',
         c4: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="3.2"/><circle cx="17" cy="7" r="3.2" fill="currentColor"/><circle cx="7" cy="17" r="3.2" fill="currentColor"/><circle cx="17" cy="17" r="3.2"/></svg>'
       };
+      GAME_ICON.draw = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/></svg>';
       const gameStates = new Map(); // latest state of every game the server told us about
       const gameCards = new Map(); // gameId -> { el, state } for cards on screen
 
@@ -1951,8 +2060,10 @@
         kicker.textContent = label;
         const line = el('', 'span');
         line.textContent = g.opponent
-          ? nameOf(g.challenger) + ' vs ' + nameOf(g.opponent)
-          : nameOf(g.challenger) + ' challenged everyone to ' + label + '!';
+          ? nameOf(g.challenger) + (g.type === 'draw' ? ' & ' : ' vs ') + nameOf(g.opponent)
+          : g.type === 'draw'
+            ? nameOf(g.challenger) + ' invited everyone to draw together!'
+            : nameOf(g.challenger) + ' challenged everyone to ' + label + '!';
         title.append(kicker, line);
         head.append(badge, title);
         card.appendChild(head);
@@ -1977,7 +2088,7 @@
             const actions = el('g-actions wide');
             const accept = el('primary', 'button');
             accept.type = 'button';
-            accept.textContent = 'Accept challenge';
+            accept.textContent = g.type === 'draw' ? 'Join the drawing' : 'Accept challenge';
             accept.addEventListener('click', () => socket.emit('accept-game', g.id));
             actions.appendChild(accept);
             card.appendChild(actions);
@@ -1996,16 +2107,18 @@
         const players = el('g-players');
         [g.challenger, g.opponent].forEach((p, i) => {
           const box = el('g-player');
-          if (g.status === 'playing' && g.turn === p.id) box.classList.add('turn');
+          if (g.type !== 'draw' && g.status === 'playing' && g.turn === p.id) box.classList.add('turn');
           if (g.status === 'won' && g.winner === p.id) box.classList.add('won');
           const mk = el('g-mark');
-          mk.innerHTML = g.type === 'ttt' ? markSvg(i === 0 ? 'X' : 'O') : '<i class="disc ' + (i === 0 ? 'r' : 'y') + '"></i>';
+          mk.innerHTML = g.type === 'ttt' ? markSvg(i === 0 ? 'X' : 'O') : g.type === 'draw' ? '<i class="disc d' + i + '"></i>' : '<i class="disc ' + (i === 0 ? 'r' : 'y') + '"></i>';
           const nm = el('g-pname', 'span');
           nm.textContent = nameOf(p);
           box.append(mk, nm);
           players.appendChild(box);
         });
         card.appendChild(players);
+
+        if (g.type === 'draw') { renderDrawing(entry, isPlayer); return; }
 
         /* board */
         const interactive = g.status === 'playing' && g.turn === meId;
@@ -2234,6 +2347,226 @@
       socket.on('message-vanish', (d) => {
         const row = messagesEl.querySelector('.row[data-mid="' + d.id + '"]');
         if (row) vanishRow(row);
+      });
+
+      /* ================================================================ */
+      /* Drawing game + finished-game cleanup                             */
+      /* ================================================================ */
+
+      const DRAW_COLORS = ['#1b1b1f', '#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
+      const DRAW_NAMES = ['Ink', 'Red', 'Amber', 'Green', 'Blue', 'Purple'];
+      const DRAW_SIZES = [0.006, 0.013, 0.026]; // brush width as a fraction of the canvas width
+      const DRAW_DOTS = [4, 8, 14];
+
+      // Points live in a 0..1000 space, so every screen size draws the same picture
+      function paintStroke(ctx, c, w, prev, pts) {
+        const W = ctx.canvas.width;
+        const H = ctx.canvas.height;
+        ctx.strokeStyle = DRAW_COLORS[c];
+        ctx.lineWidth = DRAW_SIZES[w] * W;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        const start = prev || pts[0];
+        ctx.moveTo((start[0] * W) / 1000, (start[1] * H) / 1000);
+        if (!prev) ctx.lineTo((start[0] * W) / 1000 + 0.01, (start[1] * H) / 1000); // a tap leaves a dot
+        for (let i = 0; i < pts.length; i++) ctx.lineTo((pts[i][0] * W) / 1000, (pts[i][1] * H) / 1000);
+        ctx.stroke();
+      }
+
+      function renderDrawing(entry, isPlayer) {
+        const g = entry.state;
+        const card = entry.el;
+        if (!g.strokes) g.strokes = [];
+        const pen = entry.pen || (entry.pen = { c: 0, w: 1, sid: Date.now() % 100000000 });
+        const live = g.status === 'playing' && isPlayer;
+
+        const paper = el('paper');
+        const canvas = el('', 'canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        if (live) canvas.classList.add('live');
+        paper.appendChild(canvas);
+        card.appendChild(paper);
+
+        const ctx = canvas.getContext('2d');
+        entry.ctx = ctx;
+        g.strokes.forEach((s) => paintStroke(ctx, s.c, s.w, null, s.pts));
+
+        if (live) {
+          attachDrawing(entry, canvas, ctx, pen);
+
+          const tools = el('tools');
+          const swatches = el('swatches');
+          DRAW_COLORS.forEach((col, i) => {
+            const b = el('sw' + (i === pen.c ? ' sel' : ''), 'button');
+            b.type = 'button';
+            b.style.setProperty('--c', col);
+            b.setAttribute('aria-label', DRAW_NAMES[i]);
+            b.title = DRAW_NAMES[i];
+            b.addEventListener('click', () => {
+              pen.c = i;
+              swatches.querySelectorAll('.sw').forEach((x, k) => x.classList.toggle('sel', k === i));
+            });
+            swatches.appendChild(b);
+          });
+
+          const row = el('tool-row');
+          const sizes = el('sizes');
+          DRAW_DOTS.forEach((d, i) => {
+            const b = el('sz' + (i === pen.w ? ' sel' : ''), 'button');
+            b.type = 'button';
+            b.setAttribute('aria-label', 'Brush size ' + (i + 1));
+            b.innerHTML = '<i style="--d:' + d + 'px"></i>';
+            b.addEventListener('click', () => {
+              pen.w = i;
+              sizes.querySelectorAll('.sz').forEach((x, k) => x.classList.toggle('sel', k === i));
+            });
+            sizes.appendChild(b);
+          });
+          const clear = el('ghost', 'button');
+          clear.type = 'button';
+          clear.textContent = 'Clear';
+          clear.addEventListener('click', () => {
+            if (window.confirm('Clear the canvas for both of you?')) socket.emit('draw-clear', g.id);
+          });
+          const done = el('primary', 'button');
+          done.type = 'button';
+          done.textContent = 'Finish';
+          done.addEventListener('click', () => {
+            if (window.confirm('Finish this drawing for both of you?')) socket.emit('finish-game', g.id);
+          });
+          row.append(sizes, clear, done);
+          tools.append(swatches, row);
+          card.appendChild(tools);
+        }
+
+        const st = el('g-status');
+        if (g.status === 'done') {
+          st.textContent = 'Drawing finished!';
+          st.classList.add('win');
+        } else {
+          st.textContent = isPlayer ? 'Draw together' : 'Watching live';
+        }
+        card.appendChild(st);
+      }
+
+      function attachDrawing(entry, canvas, ctx, pen) {
+        const g = entry.state;
+        let stroke = null;
+        let last = null;
+        let buf = [];
+        let timer = 0;
+
+        const pos = (e) => {
+          const r = canvas.getBoundingClientRect();
+          const x = Math.round(((e.clientX - r.left) / r.width) * 1000);
+          const y = Math.round(((e.clientY - r.top) / r.height) * 1000);
+          return [Math.max(0, Math.min(1000, x)), Math.max(0, Math.min(1000, y))];
+        };
+        function flush() {
+          timer = 0;
+          if (!stroke) return;
+          while (buf.length) {
+            if (socket.connected) socket.emit('draw-seg', { gameId: g.id, sid: stroke.s, c: stroke.c, w: stroke.w, pts: buf.slice(0, 60) });
+            buf = buf.slice(60);
+          }
+        }
+        function schedule() { if (!timer) timer = setTimeout(flush, 35); }
+
+        canvas.addEventListener('pointerdown', (e) => {
+          if (e.button > 0 || stroke) return;
+          e.preventDefault();
+          canvas.setPointerCapture(e.pointerId);
+          pen.sid += 1;
+          const p = pos(e);
+          stroke = { u: me.id, s: pen.sid, c: pen.c, w: pen.w, pts: [p] };
+          g.strokes.push(stroke);
+          paintStroke(ctx, stroke.c, stroke.w, null, [p]);
+          buf = [p];
+          last = p;
+          schedule();
+        });
+        canvas.addEventListener('pointermove', (e) => {
+          if (!stroke) return;
+          const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+          (events.length ? events : [e]).forEach((ev) => {
+            const p = pos(ev);
+            if (p[0] === last[0] && p[1] === last[1]) return;
+            paintStroke(ctx, stroke.c, stroke.w, last, [p]);
+            stroke.pts.push(p);
+            buf.push(p);
+            last = p;
+          });
+          schedule();
+        });
+        const end = () => {
+          if (!stroke) return;
+          flush();
+          stroke = null;
+          last = null;
+        };
+        canvas.addEventListener('pointerup', end);
+        canvas.addEventListener('pointercancel', end);
+        canvas.addEventListener('lostpointercapture', end);
+      }
+
+      // The other player's strokes arrive in small batches and are painted as they come
+      socket.on('draw-seg', (d) => {
+        const entry = gameCards.get(d.gameId);
+        if (!entry) return;
+        const g = entry.state;
+        if (!g.strokes) g.strokes = [];
+        let stroke = null;
+        for (let i = g.strokes.length - 1; i >= 0; i--) {
+          if (g.strokes[i].u === d.u && g.strokes[i].s === d.s) { stroke = g.strokes[i]; break; }
+        }
+        let prev = null;
+        if (stroke) {
+          prev = stroke.pts[stroke.pts.length - 1] || null;
+        } else {
+          stroke = { u: d.u, s: d.s, c: d.c, w: d.w, pts: [] };
+          g.strokes.push(stroke);
+        }
+        if (entry.ctx) paintStroke(entry.ctx, stroke.c, stroke.w, prev, d.pts);
+        d.pts.forEach((p) => stroke.pts.push(p));
+      });
+
+      socket.on('draw-clear', (d) => {
+        const entry = gameCards.get(d.gameId);
+        if (!entry) return;
+        entry.state.strokes = [];
+        if (entry.ctx) entry.ctx.clearRect(0, 0, entry.ctx.canvas.width, entry.ctx.canvas.height);
+      });
+
+      // Game over: the card folds away and a one-line result takes its place
+      function collapseCard(card) {
+        card.classList.remove('enter');
+        card.style.height = card.offsetHeight + 'px';
+        card.style.overflow = 'hidden';
+        void card.offsetHeight;
+        card.style.transition = 'height 0.45s var(--ease), margin 0.45s var(--ease), padding 0.45s var(--ease), opacity 0.35s ease, border-width 0.45s var(--ease)';
+        card.style.height = '0px';
+        card.style.margin = '0';
+        card.style.paddingTop = '0';
+        card.style.paddingBottom = '0';
+        card.style.borderWidth = '0';
+        card.style.opacity = '0';
+        setTimeout(() => { card.remove(); showEmptyIfNeeded(); }, 500);
+      }
+
+      socket.on('game-remove', (d) => {
+        gameStates.delete(d.id);
+        const entry = gameCards.get(d.id);
+        gameCards.delete(d.id);
+        if (!entry) return;
+        if (d.result) {
+          const line = document.createElement('div');
+          line.className = 'system result';
+          line.textContent = d.result.text;
+          entry.el.parentNode.insertBefore(line, entry.el);
+        }
+        collapseCard(entry.el);
       });
 
       /* ================================================================ */
