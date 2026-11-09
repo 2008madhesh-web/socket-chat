@@ -337,6 +337,11 @@ app.post('/api/avatar', avatarLimiter, async (req, res, next) => {
     const sockets = await io.in(`user:${req.user.id}`).fetchSockets();
     sockets.forEach((s) => { s.data.avatar = avatar; });
     io.emit('avatar-updated', { userId: req.user.id, avatar });
+    const online = presence.get(req.user.id);
+    if (online) {
+      online.avatar = avatar;
+      broadcastOnline();
+    }
 
     res.json({ user: serializeUser(req.user) });
   } catch (err) {
@@ -403,13 +408,13 @@ io.engine.use(
 /* ------------------------------------------------------------------ */
 
 const history = []; // last MAX_HISTORY messages (in memory)
-const presence = new Map(); // userId -> { name, connections }
+const presence = new Map(); // userId -> { name, avatar, color, connections }
 let nextMessageId = 1;
 
 function broadcastOnline() {
   io.emit('online', {
     count: presence.size,
-    names: Array.from(presence.values()).map((p) => p.name)
+    users: Array.from(presence, ([id, p]) => ({ id, name: p.name, avatar: p.avatar, color: p.color }))
   });
 }
 
@@ -779,14 +784,16 @@ io.on('connection', (socket) => {
   if (existing) {
     existing.connections += 1;
   } else {
-    presence.set(userId, { name, connections: 1 });
+    presence.set(userId, { name, avatar, color, connections: 1 });
     systemMessage(`${name} joined the chat`);
   }
   broadcastOnline();
 
   let recentTimes = [];
 
-  socket.on('chat-message', (text) => {
+  socket.on('chat-message', (payload) => {
+    const isObject = payload !== null && typeof payload === 'object';
+    const text = typeof payload === 'string' ? payload : isObject ? payload.text : null;
     if (typeof text !== 'string') return;
 
     const message = text.trim().slice(0, MAX_MESSAGE_LENGTH);
@@ -801,6 +808,21 @@ io.on('connection', (socket) => {
     }
     recentTimes.push(now);
 
+    // Reply: the server looks up the original itself, so a client cannot fake what someone said.
+    // Disappearing originals are quoted without their text.
+    let reply = null;
+    if (isObject && Number.isInteger(payload.replyTo)) {
+      const orig = history.find((m) => m.id === payload.replyTo);
+      if (orig && typeof orig.text === 'string') {
+        reply = {
+          id: orig.id,
+          userId: orig.userId,
+          name: orig.name,
+          text: orig.vanishAt ? '' : orig.text.slice(0, 100)
+        };
+      }
+    }
+
     const msg = {
       id: nextMessageId++,
       userId,
@@ -812,6 +834,7 @@ io.on('connection', (socket) => {
       vanishAt: disappearUsers.has(userId) ? now + VANISH_MS : null,
       ttl: disappearUsers.has(userId) ? VANISH_MS : 0
     };
+    if (reply) msg.reply = reply;
 
     history.push(msg);
     if (history.length > MAX_HISTORY) history.shift();
