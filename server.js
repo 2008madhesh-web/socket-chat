@@ -423,6 +423,10 @@ function systemMessage(text) {
 
 const VANISH_MS = 10 * 1000; // how long a disappearing message lives
 const FORFEIT_GRACE_MS = 15 * 1000; // a refresh should not forfeit a game
+const END_DELAY_MS = 3500; // how long the finished board stays up before it turns into a result line
+const MAX_STROKES = 400; // drawing game limits keep memory small
+const MAX_POINTS = 15000;
+const GAME_LABELS = { ttt: 'Tic-Tac-Toe', c4: 'Connect Four', draw: 'Drawing' };
 const disappearUsers = new Set(); // userIds who have disappear mode switched on
 const games = new Map(); // gameId -> game
 let nextGameId = 1;
@@ -491,12 +495,50 @@ function publicGame(g) {
     winner: g.winner,
     line: g.line,
     lastMove: g.lastMove,
-    reason: g.reason
+    reason: g.reason,
+    strokes: g.type === 'draw' ? g.strokes : undefined
   };
 }
 
 function broadcastGame(g) {
   io.emit('game-update', publicGame(g));
+}
+
+// The one-line summary that replaces a finished game card in the chat
+function resultText(g) {
+  const a = g.challenger.name;
+  const b = g.opponent ? g.opponent.name : '';
+  const label = GAME_LABELS[g.type];
+  if (g.type === 'draw') return `${a} and ${b} finished a drawing together`;
+  if (g.status === 'draw') return `${a} and ${b} drew at ${label}`;
+  const winner = g.winner === g.challenger.id ? g.challenger : g.opponent;
+  const loser = winner === g.challenger ? g.opponent : g.challenger;
+  if (g.reason === 'resigned') return `${loser.name} resigned. ${winner.name} won ${label}`;
+  if (g.reason === 'left') return `${loser.name} left. ${winner.name} won ${label}`;
+  return `${winner.name} won ${label} against ${loser.name}`;
+}
+
+// Game over: show the final board briefly, then swap the card for a result line.
+// A cancelled challenge just disappears.
+function endGame(g) {
+  if (g.status === 'cancelled') return removeGame(g, null);
+  broadcastGame(g);
+  const text = resultText(g);
+  setTimeout(() => removeGame(g, text), END_DELAY_MS).unref();
+}
+
+function removeGame(g, text) {
+  if (!games.has(g.id)) return;
+  games.delete(g.id);
+  const i = history.findIndex((m) => m.type === 'game' && m.gameId === g.id);
+  let result = null;
+  if (text) {
+    result = { type: 'result', text, time: Date.now() };
+    if (i !== -1) history[i] = result;
+  } else if (i !== -1) {
+    history.splice(i, 1);
+  }
+  io.emit('game-remove', { id: g.id, result });
 }
 
 // One open or running game per person keeps things simple and fair
@@ -529,7 +571,7 @@ function registerExtraHandlers(socket, userId, name) {
 
   // ----- challenges -----
   socket.on('create-game', (type) => {
-    if (type !== 'ttt' && type !== 'c4') return;
+    if (type !== 'ttt' && type !== 'c4' && type !== 'draw') return;
 
     const now = Date.now();
     if (now - lastCreate < 2000) return fail('Slow down a little.');
@@ -542,7 +584,10 @@ function registerExtraHandlers(socket, userId, name) {
       status: 'open',
       challenger: { id: userId, name },
       opponent: null,
-      board: new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
+      board: type === 'draw' ? [] : new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
+      strokes: [],
+      strokeMap: new Map(),
+      totalPts: 0,
       turn: null,
       winner: null,
       line: null,
@@ -574,26 +619,26 @@ function registerExtraHandlers(socket, userId, name) {
     const g = games.get(gameId);
     if (!g || g.status !== 'open' || g.challenger.id !== userId) return;
     g.status = 'cancelled';
-    broadcastGame(g);
+    endGame(g);
   });
 
   socket.on('resign-game', (gameId) => {
     const g = games.get(gameId);
-    if (!g || g.status !== 'playing') return;
+    if (!g || g.status !== 'playing' || g.type === 'draw') return;
     const isChallenger = g.challenger.id === userId;
     if (!isChallenger && g.opponent.id !== userId) return;
 
     g.status = 'won';
     g.winner = isChallenger ? g.opponent.id : g.challenger.id;
     g.reason = 'resigned';
-    broadcastGame(g);
+    endGame(g);
   });
 
   // ----- moves: the server decides whose turn it is and whether the move is legal -----
   socket.on('make-move', (data) => {
     if (!data || typeof data !== 'object') return;
     const g = games.get(data.gameId);
-    if (!g || g.status !== 'playing' || g.turn !== userId) return;
+    if (!g || g.status !== 'playing' || g.type === 'draw' || g.turn !== userId) return;
 
     const index = data.index;
     if (!Number.isInteger(index)) return;
@@ -627,7 +672,69 @@ function registerExtraHandlers(socket, userId, name) {
     } else {
       g.turn = isChallenger ? g.opponent.id : g.challenger.id;
     }
-    broadcastGame(g);
+    if (g.status === 'playing') broadcastGame(g);
+    else endGame(g);
+  });
+
+  // ----- drawing together -----
+  let drawWindow = 0;
+  let drawCount = 0;
+  const isPlayerOf = (g) => g.challenger.id === userId || (g.opponent && g.opponent.id === userId);
+
+  socket.on('draw-seg', (d) => {
+    if (!d || typeof d !== 'object') return;
+    const g = games.get(d.gameId);
+    if (!g || g.type !== 'draw' || g.status !== 'playing' || !isPlayerOf(g)) return;
+
+    // flood guard: a fast hand sends well under 60 batches a second
+    const now = Date.now();
+    if (now - drawWindow > 1000) { drawWindow = now; drawCount = 0; }
+    if (++drawCount > 120) return;
+
+    if (!Number.isInteger(d.sid) || !Number.isInteger(d.c) || d.c < 0 || d.c > 5) return;
+    if (!Number.isInteger(d.w) || d.w < 0 || d.w > 2) return;
+    if (!Array.isArray(d.pts) || d.pts.length === 0 || d.pts.length > 60) return;
+
+    const pts = [];
+    for (const p of d.pts) {
+      if (!Array.isArray(p) || p.length !== 2) return;
+      const x = Math.round(p[0]);
+      const y = Math.round(p[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1000 || y < 0 || y > 1000) return;
+      pts.push([x, y]);
+    }
+
+    const key = `${userId}:${d.sid}`;
+    let stroke = g.strokeMap.get(key);
+    if (!stroke) {
+      if (g.strokes.length >= MAX_STROKES || g.totalPts >= MAX_POINTS) {
+        return fail('The canvas is full. Clear it to keep drawing.');
+      }
+      stroke = { u: userId, s: d.sid, c: d.c, w: d.w, pts: [] };
+      g.strokes.push(stroke);
+      g.strokeMap.set(key, stroke);
+    }
+    if (g.totalPts + pts.length > MAX_POINTS) return;
+    for (const p of pts) stroke.pts.push(p);
+    g.totalPts += pts.length;
+
+    socket.broadcast.emit('draw-seg', { gameId: g.id, u: userId, s: d.sid, c: stroke.c, w: stroke.w, pts });
+  });
+
+  socket.on('draw-clear', (gameId) => {
+    const g = games.get(gameId);
+    if (!g || g.type !== 'draw' || g.status !== 'playing' || !isPlayerOf(g)) return;
+    g.strokes = [];
+    g.strokeMap.clear();
+    g.totalPts = 0;
+    io.emit('draw-clear', { gameId: g.id });
+  });
+
+  socket.on('finish-game', (gameId) => {
+    const g = games.get(gameId);
+    if (!g || g.type !== 'draw' || g.status !== 'playing' || !isPlayerOf(g)) return;
+    g.status = 'done';
+    endGame(g);
   });
 
   // If someone really leaves (not just a refresh), end their games
@@ -637,12 +744,16 @@ function registerExtraHandlers(socket, userId, name) {
       for (const g of games.values()) {
         if (g.status === 'open' && g.challenger.id === userId) {
           g.status = 'cancelled';
-          broadcastGame(g);
+          endGame(g);
         } else if (g.status === 'playing' && (g.challenger.id === userId || g.opponent.id === userId)) {
-          g.status = 'won';
-          g.winner = g.challenger.id === userId ? g.opponent.id : g.challenger.id;
-          g.reason = 'left';
-          broadcastGame(g);
+          if (g.type === 'draw') {
+            g.status = 'done';
+          } else {
+            g.status = 'won';
+            g.winner = g.challenger.id === userId ? g.opponent.id : g.challenger.id;
+            g.reason = 'left';
+          }
+          endGame(g);
         }
       }
     }, FORFEIT_GRACE_MS).unref();
