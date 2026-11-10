@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
   <title>Atti chat</title>
   <script>
     /* Apply the saved theme before first paint so there is no flash */
@@ -1364,25 +1366,22 @@
 
     /* ================= invite link ================= */
     #new-modal .sheet { max-height: calc(100% - 16px); overflow-y: auto; }
-    .invite { margin: 0 0 12px; padding: 12px; border-radius: 16px; background: var(--field); }
-    .invite-msg { margin: 0 0 8px; font-size: 0.82rem; line-height: 1.4; }
-    .invite-row { display: flex; align-items: center; gap: 8px; }
-    .invite-link {
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: var(--panel);
-      color: var(--accent-hover);
-      font-size: 0.78rem;
+    .invite { margin: 0 0 12px; }
+    .invite .ghost {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 0.88rem;
       font-weight: 600;
-      -webkit-user-select: all;
-      user-select: all;
+      background: var(--field);
+      transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s var(--spring);
     }
-    .invite .ghost { flex: 0 0 auto; padding: 8px 16px; font-size: 0.82rem; background: var(--bubble); }
+    .invite .ghost:hover { background: var(--bubble); }
+    .invite .ghost svg { width: 17px; height: 17px; flex: 0 0 auto; }
+    .invite .ghost.copied { color: var(--accent-hover); }
 
     /* ================= offline look ================= */
     .dot.off { background: var(--muted); }
@@ -1553,6 +1552,11 @@
                 <span>Disappear mode</span>
                 <span class="switch" aria-hidden="true"></span>
               </button>
+              <button class="menu-item" id="notify-btn" type="button" role="menuitemcheckbox" aria-checked="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                <span>Notifications</span>
+                <span class="switch" aria-hidden="true"></span>
+              </button>
               <button class="menu-item" id="theme-btn" type="button" role="menuitem">
                 <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
                 <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -1646,11 +1650,10 @@
           <input id="user-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Exact username" aria-label="Exact username" />
           <ul class="people" id="people"></ul>
           <div class="invite" id="invite" hidden>
-            <p class="invite-msg" id="invite-msg"></p>
-            <div class="invite-row">
-              <span class="invite-link" id="invite-link"></span>
-              <button type="button" class="ghost" id="invite-copy">Copy</button>
-            </div>
+            <button type="button" class="ghost" id="invite-copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span id="invite-copy-label">Copy link</span>
+            </button>
           </div>
           <div class="form-error" id="new-error" role="alert"></div>
           <div class="sheet-actions">
@@ -1757,9 +1760,9 @@
       const newCancel = $('new-cancel');
       const newCreate = $('new-create');
       const inviteBox = $('invite');
-      const inviteMsg = $('invite-msg');
-      const inviteLinkEl = $('invite-link');
       const inviteCopy = $('invite-copy');
+      const inviteCopyLabel = $('invite-copy-label');
+      const notifyBtn = $('notify-btn');
 
       /* ---------- state ---------- */
       let me = null; // the logged-in user
@@ -1987,7 +1990,7 @@
 
       logoutBtn.addEventListener('click', async () => {
         loggingOut = true;
-        await request('POST', '/api/logout');
+        await request('POST', '/api/logout', { endpoint: await pushEndpoint() });
         socket.disconnect();
         showAuth();
       });
@@ -3618,9 +3621,10 @@
       /* ---------- invite link: share it so a friend lands here with your username typed in ---------- */
       const INVITE_TEXT = 'Hey! Bored? Come join me on Atti chat\u2014we can play a quick game or just attii panlaam. Click here to add me:';
       const ADD_KEY = 'atti-add';
+      const SITE_URL = 'https://attichat.madhesh.website';
 
       function inviteLink() {
-        return window.location.origin + '/?add=' + encodeURIComponent(me.username);
+        return SITE_URL + '/?add=' + encodeURIComponent(me.username);
       }
 
       // Only accounts with a username can be found, so only they get an invite
@@ -3628,9 +3632,8 @@
         const ok = Boolean(me && me.username);
         inviteBox.hidden = !ok;
         if (!ok) return;
-        inviteMsg.textContent = INVITE_TEXT;
-        inviteLinkEl.textContent = inviteLink();
-        inviteCopy.textContent = 'Copy';
+        inviteCopyLabel.textContent = 'Copy link';
+        inviteCopy.classList.remove('copied');
       }
 
       async function copyText(text) {
@@ -3657,9 +3660,13 @@
       inviteCopy.addEventListener('click', async () => {
         if (!me || !me.username) return;
         const ok = await copyText(INVITE_TEXT + ' ' + inviteLink());
-        inviteCopy.textContent = ok ? 'Copied!' : 'Press and hold the link to copy';
+        inviteCopyLabel.textContent = ok ? 'Link copied' : 'Could not copy. Try again';
+        inviteCopy.classList.toggle('copied', ok);
         clearTimeout(copyTimer);
-        copyTimer = setTimeout(() => { inviteCopy.textContent = 'Copy'; }, 2000);
+        copyTimer = setTimeout(() => {
+          inviteCopyLabel.textContent = 'Copy link';
+          inviteCopy.classList.remove('copied');
+        }, 2000);
       });
 
       // After logging in, open the add-friends page for whoever's link was clicked
@@ -3899,6 +3906,180 @@
       })();
 
       /* ================================================================ */
+      /* Message notifications                                            */
+      /* ================================================================ */
+
+      // A new message while you are away shows an alert with the device's notification sound.
+      // "Away" means the app is closed, in the background, or its window is not in front.
+      // The server sends the alert as a push (works even when the app is closed). If the server has
+      // no push keys, or this browser cannot subscribe, an open-but-hidden tab shows the alert itself.
+      const CAN_NOTIFY = 'serviceWorker' in navigator && 'Notification' in window;
+      const notifyKey = (id) => 'atti-notify:' + id;
+      let notifyOn = false;
+      let pushWorking = false; // this device is subscribed to the server's push
+      let pushKey = null; // the server's public key ('' when push is not set up there)
+      let swReg = null;
+
+      function readNotifyPref(id) {
+        try { return localStorage.getItem(notifyKey(id)) === '1'; } catch (e) { return false; }
+      }
+      function setNotify(on, persist) {
+        notifyOn = on;
+        notifyBtn.setAttribute('aria-checked', String(on));
+        if (persist && me) {
+          try { localStorage.setItem(notifyKey(me.id), on ? '1' : '0'); } catch (e) { /* storage blocked */ }
+        }
+      }
+
+      async function getSw() {
+        if (!CAN_NOTIFY) return null;
+        if (!swReg) {
+          try {
+            swReg = await navigator.serviceWorker.register('/sw.js');
+            await navigator.serviceWorker.ready;
+          } catch (e) {
+            swReg = null;
+          }
+        }
+        return swReg;
+      }
+
+      function keyToBytes(base64) {
+        const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+        const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        return Uint8Array.from(raw, (ch) => ch.charCodeAt(0));
+      }
+
+      async function loadPushKey() {
+        if (pushKey !== null) return pushKey;
+        const res = await request('GET', '/api/push/key');
+        if (!res.ok) return '';
+        pushKey = res.data.key || '';
+        return pushKey;
+      }
+
+      // Subscribe this device to the server's push. True when it worked.
+      async function syncPush() {
+        pushWorking = false;
+        const key = await loadPushKey();
+        const reg = await getSw();
+        if (!key || !reg || !reg.pushManager) return false;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key) });
+        const res = await request('POST', '/api/push/subscribe', { subscription: sub.toJSON() });
+        pushWorking = res.ok;
+        return res.ok;
+      }
+
+      // This device's push address, so logging out can stop alerts for the account that left
+      async function pushEndpoint() {
+        try {
+          if (!CAN_NOTIFY) return null;
+          const reg = await navigator.serviceWorker.getRegistration('/');
+          const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+          return sub ? sub.endpoint : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      async function enableNotify() {
+        if (!CAN_NOTIFY) {
+          return showToast('Notifications are not available here. On iPhone, add Atti chat to your Home Screen first.');
+        }
+        if (Notification.permission === 'denied') {
+          return showToast('Notifications are blocked. Allow them in your browser settings.');
+        }
+        const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+        if (permission !== 'granted') return showToast('Notifications stay off until you allow them.');
+
+        try {
+          if (!(await getSw())) throw new Error('no service worker');
+          await syncPush();
+        } catch (e) {
+          return showToast('Could not turn on notifications. Try again.');
+        }
+        setNotify(true, true);
+        showToast('Notifications on');
+      }
+
+      async function disableNotify() {
+        setNotify(false, true);
+        pushWorking = false;
+        try {
+          const reg = await getSw();
+          const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+          if (sub) {
+            await request('POST', '/api/push/unsubscribe', { endpoint: sub.endpoint });
+            await sub.unsubscribe();
+          }
+        } catch (e) { /* nothing to clean up */ }
+        showToast('Notifications off');
+      }
+
+      notifyBtn.addEventListener('click', () => {
+        if (notifyOn) disableNotify();
+        else enableNotify();
+      });
+
+      /* ---------- tell the server whether you are looking at the app ---------- */
+      function appInFront() {
+        return document.visibilityState === 'visible' && document.hasFocus();
+      }
+      function reportFront() {
+        if (socket.connected) socket.emit('app-active', appInFront());
+      }
+      document.addEventListener('visibilitychange', reportFront);
+      window.addEventListener('focus', reportFront);
+      window.addEventListener('blur', reportFront);
+      // Repeat while in front, so the server stops counting a tab that was frozen in the background
+      setInterval(() => { if (appInFront()) reportFront(); }, 20000);
+
+      socket.on('connect', () => {
+        reportFront();
+        if (!me) return;
+        const want = CAN_NOTIFY && readNotifyPref(me.id) && Notification.permission === 'granted';
+        setNotify(want, false);
+        if (want) syncPush().catch(() => { pushWorking = false; });
+      });
+
+      /* ---------- fallback: an open tab that is out of sight shows the alert itself ---------- */
+      socket.on('convo:message', async (msg) => {
+        if (!me || !notifyOn || pushWorking || msg.userId === me.id || appInFront()) return;
+        try {
+          const reg = await getSw();
+          if (!reg) return;
+          const c = convos.get(msg.convo);
+          const title = c && c.type === 'group' && c.name ? msg.name + ' in ' + c.name : msg.name;
+          await reg.showNotification(title, {
+            body: msg.ttl > 0 ? 'Sent a disappearing message' : msg.text.slice(0, 140),
+            icon: '/icon-192.png',
+            tag: 'convo:' + msg.convo,
+            renotify: true,
+            silent: false,
+            vibrate: [120, 60, 120],
+            data: { convo: msg.convo }
+          });
+        } catch (e) { /* alerts are best effort */ }
+      });
+
+      /* ---------- tapping an alert while the app is open opens that chat ---------- */
+      function openFromAlert(id) {
+        if (convos.has(id)) {
+          openConvo(id);
+        } else {
+          pendingOpen = id;
+          if (socket.connected) socket.emit('convo:list');
+        }
+      }
+      if (CAN_NOTIFY) {
+        navigator.serviceWorker.addEventListener('message', (e) => {
+          const d = e.data;
+          if (d && d.type === 'open-chat' && /^[a-f\d]{24}$/i.test(d.convo || '')) openFromAlert(d.convo);
+        });
+      }
+
+      /* ================================================================ */
       /* Start up                                                         */
       /* ================================================================ */
 
@@ -3917,12 +4098,16 @@
         if (/^[a-z0-9_]{3,20}$/.test(addName)) {
           try { sessionStorage.setItem(ADD_KEY, addName); } catch (e) { /* storage blocked */ }
         }
-        if (errorCode || params.has('add')) window.history.replaceState({}, '', '/');
+        // An alert tapped while the app was closed (/?chat=id): open that chat once we are in
+        const chatParam = (params.get('chat') || '').trim();
+        const launchChat = /^[a-f\d]{24}$/i.test(chatParam) ? chatParam : null;
+        if (errorCode || params.has('add') || params.has('chat')) window.history.replaceState({}, '', '/');
 
         const { ok, data } = await request('GET', '/api/check-auth');
 
         if (ok && data.authenticated) {
           enterChat(data.user);
+          if (launchChat) pendingOpen = launchChat;
         } else {
           showAuth(pendingError || (ok ? '' : data.error));
         }
