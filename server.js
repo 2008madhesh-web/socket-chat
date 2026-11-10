@@ -13,6 +13,10 @@
  *   GOOGLE_CLIENT_SECRET
  * Optional:
  *   BASE_URL               public URL of the site (defaults to Render's URL, then localhost)
+ * Optional (message notifications when the app is closed or in the background):
+ *   VAPID_PUBLIC_KEY       create the pair with: npx web-push generate-vapid-keys
+ *   VAPID_PRIVATE_KEY
+ *   VAPID_SUBJECT          contact for the push services, a mailto: address or the site URL
  */
 
 const path = require('path');
@@ -27,10 +31,12 @@ const LocalStrategy = require('passport-local').Strategy;
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
+const webpush = require('web-push');
 
 const User = require('./models/User');
 const Conversation = require('./models/Conversation');
 const Message = require('./models/Message');
+const PushSubscription = require('./models/PushSubscription');
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                       */
@@ -292,6 +298,12 @@ app.post('/api/login', authLimiter, (req, res, next) => {
 app.post('/api/logout', (req, res, next) => {
   const userId = req.user ? req.user.id : null;
 
+  // Stop sending this device alerts for the account that just logged out
+  const pushEndpoint = req.body && typeof req.body.endpoint === 'string' ? req.body.endpoint : null;
+  if (userId && pushEndpoint) {
+    PushSubscription.deleteOne({ user: userId, endpoint: pushEndpoint }).catch((err) => console.error(err));
+  }
+
   req.logout((err) => {
     if (err) return next(err);
     req.session.destroy(() => {
@@ -380,6 +392,94 @@ app.get('/api/users/search', searchLimiter, async (req, res, next) => {
 
     const user = await User.findOne({ username: q, _id: { $ne: req.user._id } }).select('displayName username avatar');
     res.json({ users: user ? [serializeUser(user)] : [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Push notifications: alerts when the app is closed or in the background */
+/* ------------------------------------------------------------------ */
+
+let PUSH_ENABLED = Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+if (PUSH_ENABLED) {
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'https://attichat.madhesh.website',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+  } catch (err) {
+    console.error('Push notifications are disabled:', err.message);
+    PUSH_ENABLED = false;
+  }
+} else {
+  console.warn('Background push is disabled: set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable it.');
+}
+
+// Browsers only hand out subscriptions on their own push services. Refusing any other host
+// stops someone from making this server send requests to an address of their choosing.
+const PUSH_HOST_RE = /(^|\.)(googleapis\.com|mozilla\.com|mozaws\.net|push\.apple\.com|notify\.windows\.com)$/i;
+
+function validPushEndpoint(endpoint) {
+  if (typeof endpoint !== 'string' || endpoint.length > 1000) return false;
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && PUSH_HOST_RE.test(url.hostname);
+  } catch (err) {
+    return false;
+  }
+}
+
+const pushLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a moment.' }
+});
+
+// The public key the browser needs to subscribe ('' when push is not set up on this server)
+app.get('/api/push/key', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
+  res.json({ key: PUSH_ENABLED ? process.env.VAPID_PUBLIC_KEY : '' });
+});
+
+app.post('/api/push/subscribe', pushLimiter, async (req, res, next) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
+    if (!PUSH_ENABLED) return res.status(503).json({ error: 'Notifications are not set up on this server.' });
+
+    const sub = req.body && req.body.subscription;
+    const endpoint = sub && sub.endpoint;
+    const keys = sub && sub.keys;
+    const p256dh = keys && typeof keys.p256dh === 'string' ? keys.p256dh : '';
+    const auth = keys && typeof keys.auth === 'string' ? keys.auth : '';
+
+    if (!validPushEndpoint(endpoint) || !p256dh || !auth || p256dh.length > 200 || auth.length > 200) {
+      return res.status(400).json({ error: 'Invalid subscription.' });
+    }
+
+    // One row per device. If someone else logged in on this device before, it now belongs to this user.
+    await PushSubscription.findOneAndUpdate(
+      { endpoint },
+      { user: req.user._id, endpoint, keys: { p256dh, auth } },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    if (err && err.code === 11000) return res.json({ ok: true }); // two requests raced; the row exists
+    next(err);
+  }
+});
+
+app.post('/api/push/unsubscribe', pushLimiter, async (req, res, next) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
+    const endpoint = req.body && typeof req.body.endpoint === 'string' ? req.body.endpoint : '';
+    if (endpoint) await PushSubscription.deleteOne({ user: req.user._id, endpoint });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
@@ -478,6 +578,84 @@ async function contactIdsOf(userId) {
   docs.forEach((c) => c.members.forEach((m) => ids.add(String(m))));
   ids.delete(String(userId));
   return Array.from(ids);
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications: skip anyone who is looking at the chat right now      */
+/* ------------------------------------------------------------------ */
+
+const ACTIVE_FOR_MS = 45 * 1000; // a tab must have said "I'm in front" within this time
+const activeTabs = new Map(); // userId -> Map(socketId -> last time that tab reported being in front)
+
+function isUserActive(userId) {
+  const tabs = activeTabs.get(userId);
+  if (!tabs) return false;
+  const now = Date.now();
+  for (const [socketId, at] of tabs) {
+    if (now - at > ACTIVE_FOR_MS) tabs.delete(socketId);
+  }
+  if (!tabs.size) activeTabs.delete(userId);
+  return tabs.size > 0;
+}
+
+// Each tab reports whether it is visible and focused (and repeats it while it is, so a tab
+// that gets frozen in the background stops counting after a short while)
+function registerPushHandlers(socket, userId) {
+  socket.on('app-active', (on) => {
+    let tabs = activeTabs.get(userId);
+    if (on === true) {
+      if (!tabs) { tabs = new Map(); activeTabs.set(userId, tabs); }
+      tabs.set(socket.id, Date.now());
+    } else if (tabs) {
+      tabs.delete(socket.id);
+      if (!tabs.size) activeTabs.delete(userId);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    const tabs = activeTabs.get(userId);
+    if (!tabs) return;
+    tabs.delete(socket.id);
+    if (!tabs.size) activeTabs.delete(userId);
+  });
+}
+
+// Send a push to everyone in the chat (except the sender) who is not looking at the app
+async function pushToAwayMembers(convoId, memberIds, sender, text, vanishing) {
+  if (!PUSH_ENABLED) return;
+
+  const targets = memberIds.filter((id) => id !== sender.id && !isUserActive(id));
+  if (!targets.length) return;
+
+  const subs = await PushSubscription.find({ user: { $in: targets } }).lean();
+  if (!subs.length) return;
+
+  const convo = await Conversation.findById(convoId).select('type name').lean();
+  const inGroup = convo && convo.type === 'group' && convo.name;
+  const payload = JSON.stringify({
+    title: inGroup ? `${sender.displayName} in ${convo.name}` : sender.displayName,
+    body: vanishing ? 'Sent a disappearing message' : text.slice(0, 140),
+    convo: String(convoId)
+  });
+
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
+          payload,
+          { TTL: 24 * 60 * 60, urgency: 'high' }
+        );
+      } catch (err) {
+        if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+          // The device unsubscribed or the browser data was cleared
+          await PushSubscription.deleteOne({ _id: sub._id }).catch(() => {});
+        } else {
+          console.error('Push failed:', (err && (err.statusCode || err.message)) || err);
+        }
+      }
+    })
+  );
 }
 
 // Tell the people this user chats with that they came online or went offline
@@ -1089,6 +1267,8 @@ function registerConversationHandlers(socket, user, allowSend) {
       const avatar = socket.data.avatar !== undefined ? socket.data.avatar : user.avatar;
       const msg = publicConvoMessage(doc, { id: userId, displayName: user.displayName, avatar });
       emitToMembers(members, 'convo:message', msg);
+      pushToAwayMembers(payload.id, members, { id: userId, displayName: user.displayName }, text, vanishing)
+        .catch((err) => console.error(err));
       if (vanishing) scheduleVanish(doc._id, payload.id, VANISH_MS);
       io.to(members.map((id) => `user:${id}`))
         .except(`user:${userId}`)
@@ -1146,6 +1326,7 @@ io.on('connection', (socket) => {
   const allowSend = makeLimiter(RATE_LIMIT_COUNT, RATE_LIMIT_WINDOW_MS);
   const { memberIdsOf } = registerConversationHandlers(socket, user, allowSend);
   registerExtraHandlers(socket, userId, name, memberIdsOf);
+  registerPushHandlers(socket, userId);
 
   listConversations(userId)
     .then((list) => socket.emit('convo:list', list))
