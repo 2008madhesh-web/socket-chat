@@ -62,13 +62,7 @@
       --menu-bg: #ffffff;
       --scrim: rgba(60, 40, 80, 0.32);
     }
-    :root[data-theme="light"] body {
-      background:
-        radial-gradient(900px 520px at 10% -10%, #ffe2ec 0%, transparent 62%),
-        radial-gradient(820px 560px at 105% 110%, #e5dfff 0%, transparent 62%),
-        var(--bg);
-      background-attachment: fixed;
-    }
+    :root[data-theme="light"] body { background: var(--bg); }
     :root[data-theme="light"] .app { box-shadow: var(--shadow); }
     :root[data-theme="light"] input:focus { box-shadow: 0 0 0 4px rgba(221, 74, 118, 0.15); }
 
@@ -1011,57 +1005,7 @@
     }
     @media (max-width: 400px) { .me { display: none; } }
 
-    /* ================= background: bubbles rising from the send button ================= */
-    :root {
-      --bub-fill: rgba(236, 90, 133, 0.10);
-      --bub-line: rgba(255, 255, 255, 0.16);
-      --bub-glow: rgba(236, 90, 133, 0.22);
-      --bub-shine: rgba(255, 255, 255, 0.30);
-    }
-    :root[data-theme="light"] {
-      --bub-fill: rgba(221, 74, 118, 0.07);
-      --bub-line: rgba(221, 74, 118, 0.30);
-      --bub-glow: rgba(221, 74, 118, 0.18);
-      --bub-shine: rgba(255, 255, 255, 0.85);
-    }
     .app { isolation: isolate; }
-    .chat-bg {
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-      overflow: hidden;
-      pointer-events: none;
-      container-type: size;
-      --w: min(100vw, 760px);
-      --rise: -92vh;
-    }
-    @supports (height: 1cqh) {
-      .chat-bg { --w: 100cqw; --rise: calc(-100cqh - 40px); }
-    }
-    /* each bubble is born under the send button, drifts up and to the left, and fades out */
-    .chat-bg i {
-      position: absolute;
-      width: var(--s);
-      height: var(--s);
-      right: calc(38px - var(--s) / 2 + var(--ox));
-      bottom: calc(36px - var(--s) / 2 + env(safe-area-inset-bottom, 0px));
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 26%, var(--bub-shine), transparent 45%), var(--bub-fill);
-      box-shadow: inset 0 0 0 1px var(--bub-line), 0 0 16px var(--bub-glow);
-      opacity: 0;
-      will-change: transform, opacity;
-      animation: bubbleRise var(--dur) cubic-bezier(0.3, 0.1, 0.4, 1) var(--delay) infinite;
-    }
-    @keyframes bubbleRise {
-      0% { transform: translate3d(0, 0, 0) scale(0.35); opacity: 0; }
-      10% { opacity: var(--o); }
-      55% {
-        transform: translate3d(calc(var(--k) * var(--w) * 0.45 + var(--sway)), calc(var(--rise) * 0.55), 0) scale(0.9);
-        opacity: var(--o);
-      }
-      100% { transform: translate3d(calc(var(--k) * var(--w)), var(--rise), 0) scale(1.2); opacity: 0; }
-    }
-    @media (prefers-reduced-motion: reduce) { .chat-bg i { animation: none; opacity: 0; } }
 
     /* ================= result line that replaces a finished game ================= */
     .system.result { background: color-mix(in srgb, var(--accent) 14%, var(--field)); color: var(--text); font-weight: 600; }
@@ -1510,7 +1454,6 @@
   <!-- ================= CHAT ROOM ================= -->
   <div id="chat-view" class="view hidden">
     <div class="app">
-      <div class="chat-bg" aria-hidden="true"></div>
       <header>
         <div class="header-left">
           <button class="icon-btn" id="convo-btn" type="button" aria-label="Chats" title="Chats" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer">
@@ -1636,7 +1579,7 @@
       <div class="sheet-backdrop" id="new-modal" aria-hidden="true">
         <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-title">
           <h3 id="new-title">New chat</h3>
-          <p class="sheet-sub">Type a friend's exact username to find them.</p>
+          <p class="sheet-sub" id="new-sub">Type a friend's exact username to find them.</p>
           <div class="tabs" id="new-tabs" data-mode="dm" role="tablist">
             <span class="tab-ind"></span>
             <button type="button" class="tab active" data-mode="dm" role="tab" aria-selected="true">Direct message</button>
@@ -3534,9 +3477,20 @@
         peopleEl.appendChild(li);
       }
 
-      function renderPeople(users) {
+      // The other person in each of your direct messages, most recent chat first
+      function dmContacts() {
+        const list = [];
+        convos.forEach((c) => {
+          if (c.type !== 'dm') return;
+          const other = (c.members || []).find((m) => m.id !== me.id);
+          if (other) list.push({ user: other, at: convoStamp(c) });
+        });
+        return list.sort((a, b) => b.at - a.at).map((x) => x.user);
+      }
+
+      function renderPeople(users, emptyText) {
         peopleEl.textContent = '';
-        if (!users.length) return renderPeopleNote('No one with that username.');
+        if (!users.length) return renderPeopleNote(emptyText || 'No one with that username.');
         users.forEach((u) => {
           const li = document.createElement('li');
           const b = el('person' + (picked.has(u.id) ? ' sel' : ''), 'button');
@@ -3577,6 +3531,33 @@
 
       async function runSearch(q) {
         const seq = ++searchSeq;
+
+        // New group: list the people from your direct messages (filtered as you type).
+        // An exact username still finds someone you have not chatted with yet.
+        if (newMode === 'group') {
+          const term = q.trim().replace(/^@/, '').toLowerCase();
+          const mine = dmContacts().filter(
+            (u) => !term || u.displayName.toLowerCase().includes(term) || (u.username || '').includes(term)
+          );
+          const noMatch = term
+            ? 'No chats match. Type an exact username to add someone new.'
+            : 'No chats yet. Type an exact username to add someone.';
+          renderPeople(mine, noMatch);
+
+          const exactListed = mine.some((u) => u.username === term);
+          if (!/^[a-z0-9_]{3,20}$/.test(term) || exactListed) {
+            newError.classList.remove('show');
+            return;
+          }
+          const res = await request('GET', '/api/users/search?q=' + encodeURIComponent(term));
+          if (seq !== searchSeq) return; // a newer search is already on its way
+          if (!res.ok) return showNewError(res.data.error || 'Could not load people.');
+          newError.classList.remove('show');
+          const extra = (res.data.users || []).filter((u) => !mine.some((m) => m.id === u.id));
+          renderPeople(mine.concat(extra), noMatch);
+          return;
+        }
+
         // Nobody is listed until a full, exact username is typed
         if (!/^@?[a-zA-Z0-9_]{3,20}$/.test(q.trim())) {
           newError.classList.remove('show');
@@ -3599,6 +3580,11 @@
         });
         groupField.hidden = mode !== 'group';
         newCreate.hidden = mode !== 'group';
+        $('new-sub').textContent = mode === 'group'
+          ? 'Pick people from your chats, or enter a username to add someone new.'
+          : "Type a friend's exact username to find them.";
+        userSearch.placeholder = mode === 'group' ? 'Search your chats or enter a username' : 'Exact username';
+        userSearch.setAttribute('aria-label', userSearch.placeholder);
         picked.clear();
         renderPicked();
         updateCreate();
@@ -3880,29 +3866,6 @@
         messagesEl.addEventListener('contextmenu', (e) => {
           if ((timer || Date.now() - lastFire < 1500) && e.target.closest('.bubble')) e.preventDefault();
         });
-      })();
-
-      /* ================================================================ */
-      /* Background: bubbles rising from the send button                  */
-      /* ================================================================ */
-
-      (function bubbles() {
-        const bg = document.querySelector('.chat-bg');
-        if (!bg) return;
-        let seed = 7; // fixed seed: the same calm pattern every visit
-        const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-        for (let i = 0; i < 14; i++) {
-          const b = document.createElement('i');
-          b.style.cssText =
-            '--s:' + (10 + rnd() * 34).toFixed(1) + 'px;' +          // size
-            '--k:' + (-0.9 + rnd() * 0.95).toFixed(2) + ';' +        // how far left it drifts (share of the width)
-            '--sway:' + ((rnd() - 0.5) * 60).toFixed(0) + 'px;' +    // gentle wobble on the way up
-            '--ox:' + ((rnd() - 0.5) * 14).toFixed(1) + 'px;' +      // tiny offset at the button
-            '--dur:' + (11 + rnd() * 9).toFixed(1) + 's;' +
-            '--delay:-' + (rnd() * 20).toFixed(1) + 's;' +
-            '--o:' + (0.5 + rnd() * 0.5).toFixed(2);
-          bg.appendChild(b);
-        }
       })();
 
       /* ================================================================ */
