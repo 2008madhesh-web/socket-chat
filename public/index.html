@@ -1293,8 +1293,6 @@
     .convo-item:hover, .convo-item.active { background: var(--field); }
     .convo-item:active { transform: scale(0.98); }
     .convo-item .avatar { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; font-size: 1rem; }
-    .room-ico { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #ffffff; }
-    .room-ico svg { width: 22px; height: 22px; }
     .convo-text { min-width: 0; flex: 1; }
     .convo-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; font-weight: 700; }
     .convo-prev { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
@@ -1363,6 +1361,11 @@
       transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
     }
     .person.sel .p-tick { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+
+    /* ================= offline look ================= */
+    .dot.off { background: var(--muted); }
+    .dot.off::after { display: none; }
+    .op-live.off { background: color-mix(in srgb, var(--muted) 55%, transparent); }
 
     /* ================= reactions ================= */
     .bubble { -webkit-touch-callout: none; }
@@ -1544,7 +1547,7 @@
       </header>
 
       <div class="online-pop" id="online-pop" role="dialog" aria-label="People online" aria-hidden="true">
-        <div class="op-head"><strong>Online now</strong><span id="op-count"></span></div>
+        <div class="op-head"><strong>In this chat</strong><span id="op-count"></span></div>
         <ul class="op-list" id="op-list"></ul>
       </div>
 
@@ -1607,7 +1610,7 @@
       <div class="sheet-backdrop" id="new-modal" aria-hidden="true">
         <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-title">
           <h3 id="new-title">New chat</h3>
-          <p class="sheet-sub">Message one person, or start a group.</p>
+          <p class="sheet-sub">Type a friend's exact username to find them.</p>
           <div class="tabs" id="new-tabs" data-mode="dm" role="tablist">
             <span class="tab-ind"></span>
             <button type="button" class="tab active" data-mode="dm" role="tab" aria-selected="true">Direct message</button>
@@ -1618,7 +1621,7 @@
             <input id="group-name" type="text" maxlength="40" autocomplete="off" placeholder="Name your group" />
           </div>
           <div class="picked" id="picked" hidden></div>
-          <input id="user-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Search people" aria-label="Search people" />
+          <input id="user-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Exact username" aria-label="Exact username" />
           <ul class="people" id="people"></ul>
           <div class="form-error" id="new-error" role="alert"></div>
           <div class="sheet-actions">
@@ -1731,8 +1734,7 @@
       let loggingOut = false;
       let hasConnected = false;
       let focusOnConnect = false;
-      let onlineCount = null;
-      let onlineUsers = [];
+      const onlineIds = new Set(); // people from your chats who are online right now
       let replyTo = null;
       let isTyping = false;
       let typingTimer = null;
@@ -1740,10 +1742,10 @@
       let lastSender = null;
       let lastTime = 0;
       const typingUsers = new Map();
-      let activeConvo = 'main'; // 'main' is the public room, anything else is a DM / group id
+      let activeConvo = null; // id of the open DM / group (null until one is open)
       const convos = new Map(); // id -> DM / group
       const unread = new Map(); // id -> unread count (this visit only)
-      let typingConvo = 'main';
+      let typingConvo = null;
       let pendingOpen = null;
 
       // The socket only connects after the user is authenticated
@@ -1892,8 +1894,7 @@
         messagesEl.innerHTML = '';
         lastSender = null;
         lastTime = 0;
-        onlineCount = null;
-        onlineUsers = [];
+        onlineIds.clear();
         cancelReply();
         setOnlinePop(false);
         hasConnected = false;
@@ -1901,8 +1902,8 @@
         setActionMenu(false);
         jumpBtn.classList.remove('show');
         setComposerEnabled(false);
-        activeConvo = 'main';
-        typingConvo = 'main';
+        activeConvo = null;
+        typingConvo = null;
         pendingOpen = null;
         convos.clear();
         unread.clear();
@@ -1976,10 +1977,19 @@
 
       /* ---------- status + composer state ---------- */
       function renderStatus() {
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        pill.hidden = socket.connected && !c;
         if (socket.connected) {
           dot.className = 'dot online';
-          if (onlineCount === null) statusText.textContent = 'Connected';
-          else statusText.textContent = onlineCount === 1 ? '1 online' : onlineCount + ' online';
+          if (!c) {
+            statusText.textContent = 'Connected';
+          } else if (c.type === 'dm') {
+            const on = onlineIds.has(otherMember(c).id);
+            dot.className = on ? 'dot online' : 'dot off';
+            statusText.textContent = on ? 'Online' : 'Offline';
+          } else {
+            statusText.textContent = onlineMembers(c).length + ' online';
+          }
           if (onlinePop.classList.contains('open')) renderOnlineList();
         } else {
           dot.className = 'dot';
@@ -1989,11 +1999,11 @@
       }
 
       function updateSend() {
-        sendBtn.disabled = !socket.connected || !input.value.trim();
+        sendBtn.disabled = !socket.connected || !activeConvo || !input.value.trim();
       }
 
       function setComposerEnabled(enabled) {
-        input.disabled = !enabled;
+        input.disabled = !enabled || !activeConvo;
         updateSend();
       }
 
@@ -2140,9 +2150,8 @@
 
       /* ---------- typing indicator (outgoing) ---------- */
       function emitTyping(on, convoId) {
-        if (!socket.connected) return;
-        if (convoId === 'main') socket.emit('typing', on);
-        else socket.emit('convo:typing', { id: convoId, isTyping: on });
+        if (!socket.connected || !convoId) return;
+        socket.emit('convo:typing', { id: convoId, isTyping: on });
       }
       function stopTyping() {
         clearTimeout(typingTimer);
@@ -2152,7 +2161,7 @@
         }
       }
       function handleTyping() {
-        if (!socket.connected) return;
+        if (!socket.connected || !activeConvo) return;
         if (isTyping && typingConvo !== activeConvo) stopTyping();
         if (!isTyping) {
           isTyping = true;
@@ -2171,13 +2180,9 @@
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = input.value.trim();
-        if (!text || !socket.connected) return;
+        if (!text || !socket.connected || !activeConvo) return;
 
-        if (activeConvo === 'main') {
-          socket.emit('chat-message', replyTo ? { text, replyTo: replyTo.id } : text);
-        } else {
-          socket.emit('convo:message', { id: activeConvo, text, replyTo: replyTo ? replyTo.id : undefined });
-        }
+        socket.emit('convo:message', { id: activeConvo, text, replyTo: replyTo ? replyTo.id : undefined });
         cancelReply();
         stopTyping();
         input.value = '';
@@ -2218,67 +2223,14 @@
         verifySession();
       });
 
-      socket.on('history', (list) => {
-        if (activeConvo !== 'main') return;
-        messagesEl.innerHTML = '';
-        lastSender = null;
-        gameCards.clear();
-        list.forEach((m) => {
-          if (m.type === 'game') {
-            const state = gameStates.get(m.gameId);
-            if (state) addGameCard(state, false);
-          } else if (m.type === 'result') {
-            addSystemMessage(m.text, true);
-          } else {
-            addChatMessage(m, false);
-          }
+      // Someone from one of your chats came online or went offline
+      socket.on('presence', (d) => {
+        const users = (d && d.users) || {};
+        Object.keys(users).forEach((id) => {
+          if (users[id]) onlineIds.add(id);
+          else onlineIds.delete(id);
         });
-        showEmptyIfNeeded();
-        scrollToBottom(false);
-      });
-
-      socket.on('chat-message', (msg) => {
-        const own = Boolean(me) && msg.userId === me.id;
-        if (activeConvo !== 'main') {
-          if (!own) {
-            unread.set('main', (unread.get('main') || 0) + 1);
-            renderUnreadFlag();
-            refreshDrawer();
-          }
-          return;
-        }
-        const stick = isNearBottom() || own;
-        typingUsers.delete(msg.userId);
-        renderTyping();
-        addChatMessage(msg, true);
-        if (stick) scrollToBottom(true);
-        else jumpBtn.classList.add('show');
-      });
-
-      socket.on('system-message', (msg) => {
-        if (activeConvo !== 'main') return;
-        const stick = isNearBottom();
-        addSystemMessage(msg.text);
-        if (stick) scrollToBottom(true);
-      });
-
-      socket.on('online', (data) => {
-        const changed = onlineCount !== null && onlineCount !== data.count;
-        onlineCount = data.count;
-        onlineUsers = Array.isArray(data.users) ? data.users : [];
         renderStatus();
-        if (changed) {
-          pill.classList.remove('bump');
-          void pill.offsetWidth;
-          pill.classList.add('bump');
-        }
-      });
-
-      socket.on('typing', (data) => {
-        if (activeConvo !== 'main') return;
-        if (data.isTyping) typingUsers.set(data.id, data.name);
-        else typingUsers.delete(data.id);
-        renderTyping();
       });
 
       socket.on('rate-limited', () => {
@@ -2425,28 +2377,27 @@
 
       /* ---------- who is online ---------- */
       function renderOnlineList() {
-        opCount.textContent = onlineCount === null ? '' : String(onlineCount);
         opList.textContent = '';
-        if (onlineUsers.length === 0) {
-          const li = document.createElement('li');
-          li.className = 'op-empty';
-          li.textContent = 'Connecting...';
-          opList.appendChild(li);
-          return;
-        }
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        if (!c) { opCount.textContent = ''; return; }
+
         const myId = me ? me.id : null;
-        const list = onlineUsers.slice().sort((a, b) => {
+        const isOn = (m) => m.id === myId || onlineIds.has(m.id);
+        opCount.textContent = c.members.filter(isOn).length + ' of ' + c.members.length + ' online';
+
+        const list = c.members.slice().sort((a, b) => {
           if (a.id === myId) return -1;
           if (b.id === myId) return 1;
-          return a.name.localeCompare(b.name);
+          if (isOn(a) !== isOn(b)) return isOn(a) ? -1 : 1;
+          return a.displayName.localeCompare(b.displayName);
         });
         list.forEach((u) => {
           const li = document.createElement('li');
           li.className = 'op-item';
-          li.appendChild(buildAvatar(u.name, u.color, u.avatar));
+          li.appendChild(buildAvatar(u.displayName, u.color, u.avatar));
           const name = document.createElement('span');
           name.className = 'op-name';
-          name.textContent = u.name;
+          name.textContent = u.displayName;
           if (u.id === myId) {
             const you = document.createElement('span');
             you.className = 'op-you';
@@ -2454,7 +2405,7 @@
             name.appendChild(you);
           }
           const live = document.createElement('span');
-          live.className = 'op-live';
+          live.className = 'op-live' + (isOn(u) ? '' : ' off');
           li.appendChild(name);
           li.appendChild(live);
           opList.appendChild(li);
@@ -2487,7 +2438,7 @@
 
       /* ---------- reply ---------- */
       function startReply(row) {
-        const mid = activeConvo === 'main' ? Number(row.dataset.mid) : row.dataset.mid;
+        const mid = row.dataset.mid;
         if (!mid) return;
         const own = row.classList.contains('own');
         const bubble = row.querySelector('.bubble');
@@ -2653,7 +2604,8 @@
         btn.addEventListener('click', () => {
           setActionMenu(false);
           if (!socket.connected) return showToast('Still connecting. Try again in a moment.');
-          socket.emit('create-game', btn.dataset.game);
+          if (!activeConvo) return;
+          socket.emit('create-game', { convo: activeConvo, type: btn.dataset.game });
         });
       });
 
@@ -2854,16 +2806,19 @@
         }
       }
 
-      socket.on('games', (list) => {
-        gameStates.clear();
-        list.forEach((g) => gameStates.set(g.id, g));
-      });
-
       socket.on('game-new', (data) => {
         const own = Boolean(me) && data.game.challenger.id === me.id;
-        const stick = isNearBottom() || own;
         gameStates.set(data.game.id, data.game);
-        if (activeConvo !== 'main') return;
+        if (data.game.convo !== activeConvo) {
+          // A challenge in a chat that is not open counts as unread
+          if (!own) {
+            unread.set(data.game.convo, (unread.get(data.game.convo) || 0) + 1);
+            renderUnreadFlag();
+            refreshDrawer();
+          }
+          return;
+        }
+        const stick = isNearBottom() || own;
         addGameCard(data.game, true);
         if (stick) scrollToBottom(true);
         else jumpBtn.classList.add('show');
@@ -3224,8 +3179,6 @@
       /* Chats: the drawer, direct messages and groups                    */
       /* ================================================================ */
 
-      const ROOM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.55L3 20.5l1.5-5.2A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke-width="2.6"/></svg>';
-
       function otherMember(c) {
         return c.members.find((m) => !me || m.id !== me.id) || c.members[0] || { displayName: 'Unknown', color: '', avatar: '' };
       }
@@ -3253,22 +3206,44 @@
 
       /* ---------- header + composer follow the open chat ---------- */
       function renderHeader() {
-        if (activeConvo === 'main') {
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        if (!c) {
           brandTitle.textContent = 'Atti chat';
           brandSub.innerHTML = 'developed by <b>Madhesh</b>';
           return;
         }
-        const c = convos.get(activeConvo);
-        brandTitle.textContent = c ? convoName(c) : 'Chat';
-        brandSub.textContent = c ? (c.type === 'group' ? c.members.length + ' members' : 'Direct message') : '';
+        brandTitle.textContent = convoName(c);
+        brandSub.textContent = c.type === 'group' ? c.members.length + ' members' : 'Direct message';
       }
 
-      // Games and disappearing messages belong to the public room, so DMs and groups hide them
+      function onlineMembers(c) {
+        return c.members.filter((m) => (me && m.id === me.id) || onlineIds.has(m.id));
+      }
+
       function refreshComposerLook() {
-        const inRoom = activeConvo === 'main';
-        form.classList.toggle('disappear-on', disappearOn && inRoom);
-        form.classList.toggle('no-actions', !inRoom);
-        input.placeholder = inRoom && disappearOn ? 'Disappearing mode: gone in 10s' : 'Write a message';
+        const open = Boolean(activeConvo);
+        form.classList.toggle('disappear-on', disappearOn && open);
+        form.classList.toggle('no-actions', !open);
+        input.placeholder = !open ? 'Open a chat to start typing' : disappearOn ? 'Disappearing mode: gone in 10s' : 'Write a message';
+      }
+
+      // Shown when you have no chats (or none is open yet)
+      function showNoChat() {
+        messagesEl.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'empty';
+        const t = document.createElement('strong');
+        t.textContent = 'No chats yet';
+        const sub = document.createElement('span');
+        sub.textContent = 'Find a friend by their exact username to start talking.';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'primary';
+        btn.style.marginTop = '14px';
+        btn.textContent = 'Start a chat';
+        btn.addEventListener('click', () => openNew());
+        box.append(t, sub, document.createElement('br'), btn);
+        messagesEl.appendChild(box);
       }
 
       function renderUnreadFlag() {
@@ -3307,11 +3282,6 @@
 
       function renderDrawer() {
         drawerList.textContent = '';
-
-        const roomIcon = el('room-ico');
-        roomIcon.innerHTML = ROOM_SVG;
-        drawerList.appendChild(drawerSection('Room'));
-        drawerList.appendChild(convoRow('main', roomIcon, 'Everyone', onlineCount === null ? 'Public room' : 'Public room \u00b7 ' + onlineCount + ' online'));
 
         const list = Array.from(convos.values()).sort((a, b) => convoStamp(b) - convoStamp(a));
         const groups = list.filter((c) => c.type === 'group');
@@ -3359,7 +3329,7 @@
       function openConvo(id) {
         setDrawer(false);
         if (id === activeConvo) return;
-        if (id !== 'main' && !convos.has(id)) return;
+        if (!convos.has(id)) return;
 
         stopTyping();
         activeConvo = id;
@@ -3377,12 +3347,14 @@
         renderHeader();
         refreshComposerLook();
         renderUnreadFlag();
+        renderStatus();
+        setComposerEnabled(socket.connected);
         if (socket.connected) socket.emit('convo:open', id);
       }
 
-      // After a reconnect the server starts us on the public room again, so go back to the open chat
+      // After a reconnect, reload the open chat (messages and games may have changed meanwhile)
       socket.on('connect', () => {
-        if (activeConvo !== 'main') socket.emit('convo:open', activeConvo);
+        if (activeConvo) socket.emit('convo:open', activeConvo);
       });
 
       socket.on('convo:list', (list) => {
@@ -3395,6 +3367,13 @@
           pendingOpen = null;
           openConvo(id);
         }
+        // First load: jump into the most recent chat, or invite the user to start one
+        if (!activeConvo) {
+          const first = Array.from(convos.values()).sort((a, b) => convoStamp(b) - convoStamp(a))[0];
+          if (first) openConvo(first.id);
+          else showNoChat();
+        }
+        renderStatus();
       });
 
       socket.on('convo:new', (c) => {
@@ -3403,7 +3382,8 @@
           c.lastMessage = old.lastMessage;
         }
         convos.set(c.id, c);
-        refreshDrawer();
+        if (!activeConvo) openConvo(c.id);
+        else refreshDrawer();
       });
 
       // The server created (or found) the chat we asked for: open it
@@ -3421,7 +3401,22 @@
         messagesEl.innerHTML = '';
         lastSender = null;
         lastTime = 0;
-        d.messages.forEach((m) => addChatMessage(m, false));
+        gameCards.clear();
+
+        // Messages and running games, in the order they happened
+        const items = d.messages.map((m) => ({ t: m.time, m }))
+          .concat((d.games || []).map((g) => ({ t: g.time, g })));
+        items.sort((a, b) => a.t - b.t);
+        items.forEach((it) => {
+          if (it.g) {
+            gameStates.set(it.g.id, it.g);
+            addGameCard(it.g, false);
+          } else if (it.m.kind === 'result') {
+            addSystemMessage(it.m.text, true);
+          } else {
+            addChatMessage(it.m, false);
+          }
+        });
         showEmptyIfNeeded();
         scrollToBottom(false);
       });
@@ -3495,14 +3490,16 @@
         });
       }
 
+      function renderPeopleNote(text) {
+        peopleEl.textContent = '';
+        const li = el('op-empty', 'li');
+        li.textContent = text;
+        peopleEl.appendChild(li);
+      }
+
       function renderPeople(users) {
         peopleEl.textContent = '';
-        if (!users.length) {
-          const li = el('op-empty', 'li');
-          li.textContent = userSearch.value.trim() ? 'No one found.' : 'No one else has signed up yet.';
-          peopleEl.appendChild(li);
-          return;
-        }
+        if (!users.length) return renderPeopleNote('No one with that username.');
         users.forEach((u) => {
           const li = document.createElement('li');
           const b = el('person' + (picked.has(u.id) ? ' sel' : ''), 'button');
@@ -3543,6 +3540,11 @@
 
       async function runSearch(q) {
         const seq = ++searchSeq;
+        // Nobody is listed until a full, exact username is typed
+        if (!/^@?[a-zA-Z0-9_]{3,20}$/.test(q.trim())) {
+          newError.classList.remove('show');
+          return renderPeopleNote('Type their exact username to find them.');
+        }
         const { ok, data } = await request('GET', '/api/users/search?q=' + encodeURIComponent(q.trim()));
         if (seq !== searchSeq) return; // a newer search is already on its way
         if (!ok) return showNewError(data.error || 'Could not load people.');
@@ -3628,10 +3630,8 @@
       });
 
       function sendReaction(row, emoji) {
-        if (!socket.connected) return;
-        const raw = row.dataset.mid;
-        const id = activeConvo === 'main' ? Number(raw) : raw;
-        socket.emit('react', { convo: activeConvo, id, emoji });
+        if (!socket.connected || !activeConvo) return;
+        socket.emit('react', { convo: activeConvo, id: row.dataset.mid, emoji });
       }
 
       // The little emoji pills under a message
