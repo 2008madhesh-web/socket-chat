@@ -334,16 +334,11 @@ app.post('/api/avatar', avatarLimiter, async (req, res, next) => {
     req.user.avatar = avatar;
     await req.user.save();
 
-    // Update old messages, the user's open tabs, and everyone currently in the room
-    history.forEach((m) => { if (m.userId === req.user.id) m.avatar = avatar; });
+    // Update the user's open tabs, then tell the people they chat with
     const sockets = await io.in(`user:${req.user.id}`).fetchSockets();
     sockets.forEach((s) => { s.data.avatar = avatar; });
-    io.emit('avatar-updated', { userId: req.user.id, avatar });
-    const online = presence.get(req.user.id);
-    if (online) {
-      online.avatar = avatar;
-      broadcastOnline();
-    }
+    const contacts = await contactIdsOf(req.user.id);
+    emitToMembers([req.user.id, ...contacts], 'avatar-updated', { userId: req.user.id, avatar });
 
     res.json({ user: serializeUser(req.user) });
   } catch (err) {
@@ -367,36 +362,24 @@ app.get(
   (req, res) => res.redirect('/')
 );
 
-// Find people to start a chat with (used by the "New chat" sheet)
+// Find a person to chat with. Nobody is listed: you only get a match when you type an exact username.
 const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many searches. Please wait a moment.' }
 });
 
-function escapeRegex(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 app.get('/api/users/search', searchLimiter, async (req, res, next) => {
   try {
     if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
 
-    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 30) : '';
-    const filter = { _id: { $ne: req.user._id } };
-    if (q) {
-      const re = new RegExp(escapeRegex(q), 'i');
-      filter.$or = [{ displayName: re }, { username: re }];
-    }
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase().replace(/^@/, '') : '';
+    if (!USERNAME_RE.test(q)) return res.json({ users: [] });
 
-    const users = await User.find(filter)
-      .select('displayName username avatar')
-      .sort(q ? { displayName: 1 } : { createdAt: -1 })
-      .limit(12);
-
-    res.json({ users: users.map(serializeUser) });
+    const user = await User.findOne({ username: q, _id: { $ne: req.user._id } }).select('displayName username avatar');
+    res.json({ users: user ? [serializeUser(user)] : [] });
   } catch (err) {
     next(err);
   }
@@ -444,9 +427,7 @@ io.engine.use(
 /* Chat                                                                */
 /* ------------------------------------------------------------------ */
 
-const history = []; // last MAX_HISTORY messages (in memory)
-const presence = new Map(); // userId -> { name, avatar, color, connections }
-let nextMessageId = 1;
+const presence = new Map(); // userId -> { connections } (who has the app open right now)
 
 /* ------------------------------------------------------------------ */
 /* Reactions + small shared helpers                                    */
@@ -490,19 +471,31 @@ function makeLimiter(count, windowMs) {
   };
 }
 
-function publicMessage(m) {
-  return { ...m, reactions: publicReactions(m.reactions) };
+// Everyone who shares at least one chat with this user
+async function contactIdsOf(userId) {
+  const docs = await Conversation.find({ members: userId }).select('members').lean();
+  const ids = new Set();
+  docs.forEach((c) => c.members.forEach((m) => ids.add(String(m))));
+  ids.delete(String(userId));
+  return Array.from(ids);
 }
 
-function broadcastOnline() {
-  io.emit('online', {
-    count: presence.size,
-    users: Array.from(presence, ([id, p]) => ({ id, name: p.name, avatar: p.avatar, color: p.color }))
-  });
+// Tell the people this user chats with that they came online or went offline
+function announcePresence(userId, online) {
+  contactIdsOf(userId)
+    .then((ids) => emitToMembers(ids, 'presence', { users: { [userId]: online } }))
+    .catch((err) => console.error(err));
 }
 
-function systemMessage(text) {
-  io.emit('system-message', { text, time: Date.now() });
+// Tell a freshly connected tab which of this user's contacts are online right now
+function sendPresenceTo(socket, userId) {
+  contactIdsOf(userId)
+    .then((ids) => {
+      const users = {};
+      ids.forEach((id) => { users[id] = presence.has(id); });
+      socket.emit('presence', { users });
+    })
+    .catch((err) => console.error(err));
 }
 
 /* ------------------------------------------------------------------ */
@@ -517,6 +510,7 @@ const MAX_POINTS = 15000;
 const GAME_LABELS = { ttt: 'Tic-Tac-Toe', c4: 'Connect Four', draw: 'Drawing' };
 const disappearUsers = new Set(); // userIds who have disappear mode switched on
 const games = new Map(); // gameId -> game
+const scheduledVanish = new Set(); // message ids that already have a vanish timer
 let nextGameId = 1;
 
 const TTT_LINES = [
@@ -527,24 +521,22 @@ const TTT_LINES = [
 const C4_ROWS = 6;
 const C4_COLS = 7;
 
-// Adds the seconds left, so each browser can run its own countdown without trusting its clock
-function withTtl(m) {
-  const out = m.reactions ? publicMessage(m) : m;
-  return out.vanishAt ? { ...out, ttl: Math.max(0, out.vanishAt - Date.now()) } : out;
-}
-
-// The public room's history and running games, sent on connect and when switching back to the room
-function sendMain(socket) {
-  socket.emit('games', Array.from(games.values()).map(publicGame));
-  socket.emit('history', history.map(withTtl));
-}
-
-function scheduleVanish(msg) {
-  setTimeout(() => {
-    const i = history.findIndex((m) => m.id === msg.id);
-    if (i !== -1) history.splice(i, 1);
-    io.emit('message-vanish', { id: msg.id });
-  }, VANISH_MS).unref();
+// Deletes the message when its time is up and tells everyone in that chat.
+// Safe to call twice for the same message.
+function scheduleVanish(messageId, convoId, delayMs) {
+  const key = String(messageId);
+  if (scheduledVanish.has(key)) return;
+  scheduledVanish.add(key);
+  setTimeout(async () => {
+    scheduledVanish.delete(key);
+    try {
+      await Message.deleteOne({ _id: messageId });
+      const c = await Conversation.findById(convoId).select('members').lean();
+      if (c) emitToMembers(c.members.map(String), 'message-vanish', { convo: String(convoId), id: key });
+    } catch (err) {
+      console.error(err);
+    }
+  }, Math.max(0, delayMs)).unref();
 }
 
 function tttWinner(board) {
@@ -581,6 +573,8 @@ function c4Winner(board) {
 function publicGame(g) {
   return {
     id: g.id,
+    convo: g.convo,
+    time: g.time,
     type: g.type,
     status: g.status, // open | playing | won | draw | cancelled
     challenger: g.challenger,
@@ -596,7 +590,7 @@ function publicGame(g) {
 }
 
 function broadcastGame(g) {
-  io.emit('game-update', publicGame(g));
+  emitToMembers(g.members, 'game-update', publicGame(g));
 }
 
 // The one-line summary that replaces a finished game card in the chat
@@ -625,15 +619,13 @@ function endGame(g) {
 function removeGame(g, text) {
   if (!games.has(g.id)) return;
   games.delete(g.id);
-  const i = history.findIndex((m) => m.type === 'game' && m.gameId === g.id);
   let result = null;
   if (text) {
     result = { type: 'result', text, time: Date.now() };
-    if (i !== -1) history[i] = result;
-  } else if (i !== -1) {
-    history.splice(i, 1);
+    // Keep the result line in the chat so it is still there when someone opens it later
+    Message.create({ conversation: g.convo, sender: g.challenger.id, text, kind: 'result' }).catch((err) => console.error(err));
   }
-  io.emit('game-remove', { id: g.id, result });
+  emitToMembers(g.members, 'game-remove', { id: g.id, convo: g.convo, result });
 }
 
 // One open or running game per person keeps things simple and fair
@@ -645,15 +637,7 @@ function userBusy(userId) {
   return false;
 }
 
-// Forget games whose card has scrolled out of the chat history
-function pruneGames() {
-  const live = new Set(history.filter((m) => m.type === 'game').map((m) => m.gameId));
-  for (const id of games.keys()) {
-    if (!live.has(id)) games.delete(id);
-  }
-}
-
-function registerExtraHandlers(socket, userId, name) {
+function registerExtraHandlers(socket, userId, name, memberIdsOf) {
   const fail = (message) => socket.emit('game-error', { message });
   let lastCreate = 0;
 
@@ -665,43 +649,54 @@ function registerExtraHandlers(socket, userId, name) {
   });
 
   // ----- challenges -----
-  socket.on('create-game', (type) => {
-    if (type !== 'ttt' && type !== 'c4' && type !== 'draw') return;
+  socket.on('create-game', async (data) => {
+    try {
+      if (!data || typeof data !== 'object') return;
+      const type = data.type;
+      if (type !== 'ttt' && type !== 'c4' && type !== 'draw') return;
+      if (!isId(data.convo)) return;
 
-    const now = Date.now();
-    if (now - lastCreate < 2000) return fail('Slow down a little.');
-    if (userBusy(userId)) return fail('Finish or cancel your current game first.');
-    lastCreate = now;
+      const now = Date.now();
+      if (now - lastCreate < 2000) return fail('Slow down a little.');
+      lastCreate = now;
 
-    const game = {
-      id: nextGameId++,
-      type,
-      status: 'open',
-      challenger: { id: userId, name },
-      opponent: null,
-      board: type === 'draw' ? [] : new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
-      strokes: [],
-      strokeMap: new Map(),
-      totalPts: 0,
-      turn: null,
-      winner: null,
-      line: null,
-      lastMove: null,
-      reason: null
-    };
-    games.set(game.id, game);
+      const members = await memberIdsOf(data.convo);
+      if (!members) return fail('You are not part of that chat.');
+      if (userBusy(userId)) return fail('Finish or cancel your current game first.');
 
-    history.push({ type: 'game', gameId: game.id, time: now });
-    if (history.length > MAX_HISTORY) history.shift();
-    pruneGames();
+      const game = {
+        id: nextGameId++,
+        convo: data.convo,
+        members,
+        time: now,
+        type,
+        status: 'open',
+        challenger: { id: userId, name },
+        opponent: null,
+        board: type === 'draw' ? [] : new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
+        strokes: [],
+        strokeMap: new Map(),
+        totalPts: 0,
+        turn: null,
+        winner: null,
+        line: null,
+        lastMove: null,
+        reason: null
+      };
+      games.set(game.id, game);
 
-    io.emit('game-new', { game: publicGame(game), time: now });
+      emitToMembers(members, 'game-new', { game: publicGame(game), time: now });
+    } catch (err) {
+      console.error(err);
+      fail('Could not start that game.');
+    }
   });
 
   socket.on('accept-game', (gameId) => {
     const g = games.get(gameId);
     if (!g || g.status !== 'open') return fail('That challenge is no longer open.');
     if (g.challenger.id === userId) return fail("You can't accept your own challenge.");
+    if (!g.members.includes(userId)) return fail('That challenge is not for you.');
     if (userBusy(userId)) return fail('Finish or cancel your current game first.');
 
     g.opponent = { id: userId, name };
@@ -813,7 +808,7 @@ function registerExtraHandlers(socket, userId, name) {
     for (const p of pts) stroke.pts.push(p);
     g.totalPts += pts.length;
 
-    socket.broadcast.emit('draw-seg', { gameId: g.id, u: userId, s: d.sid, c: stroke.c, w: stroke.w, pts });
+    socket.to(g.members.map((id) => `user:${id}`)).emit('draw-seg', { gameId: g.id, u: userId, s: d.sid, c: stroke.c, w: stroke.w, pts });
   });
 
   socket.on('draw-clear', (gameId) => {
@@ -822,7 +817,7 @@ function registerExtraHandlers(socket, userId, name) {
     g.strokes = [];
     g.strokeMap.clear();
     g.totalPts = 0;
-    io.emit('draw-clear', { gameId: g.id });
+    emitToMembers(g.members, 'draw-clear', { gameId: g.id });
   });
 
   socket.on('finish-game', (gameId) => {
@@ -898,8 +893,9 @@ function publicConvoMessage(m, sender) {
     avatar: sender ? sender.avatar || '' : '',
     color: colorFor(sender ? sender.id : String(m.sender)),
     text: m.text,
+    kind: m.kind || 'text',
     time: m.createdAt.getTime(),
-    ttl: 0,
+    ttl: m.vanishAt ? Math.max(0, m.vanishAt.getTime() - Date.now()) : 0,
     reactions: publicReactions(m.reactions)
   };
   if (m.reply && m.reply.id) {
@@ -930,6 +926,12 @@ function registerConversationHandlers(socket, user, allowSend) {
     await convo.populate('members', 'displayName username avatar');
     memberCache.set(convo.id, convo.members.map((m) => m.id));
     emitToMembers(toIds, 'convo:new', serializeConvo(convo));
+
+    // The people in this chat can now see each other's online status
+    const users = {};
+    convo.members.forEach((m) => { users[m.id] = presence.has(m.id); });
+    emitToMembers(toIds, 'presence', { users });
+
     socket.emit('convo:started', { id: convo.id });
   }
 
@@ -941,10 +943,9 @@ function registerConversationHandlers(socket, user, allowSend) {
     }
   });
 
-  // Switch to a conversation: 'main' is the public room, anything else is a DM or group
+  // Open a DM or group: send its recent messages and any game running in it
   socket.on('convo:open', async (id) => {
     try {
-      if (id === 'main') return sendMain(socket);
       if (!isId(id)) return;
 
       if (!(await memberIdsOf(id))) return fail('You are not part of that chat.');
@@ -955,7 +956,22 @@ function registerConversationHandlers(socket, user, allowSend) {
         .populate('sender', 'displayName avatar')
         .lean();
 
-      const messages = docs.reverse().map((m) =>
+      // Disappearing messages: drop the ones already expired, make sure the rest have a timer
+      const now = Date.now();
+      const live = [];
+      docs.reverse().forEach((m) => {
+        if (m.vanishAt) {
+          const left = m.vanishAt.getTime() - now;
+          if (left <= 0) {
+            Message.deleteOne({ _id: m._id }).catch((err) => console.error(err));
+            return;
+          }
+          scheduleVanish(m._id, id, left);
+        }
+        live.push(m);
+      });
+
+      const messages = live.map((m) =>
         publicConvoMessage(
           m,
           m.sender && m.sender._id
@@ -963,7 +979,8 @@ function registerConversationHandlers(socket, user, allowSend) {
             : null
         )
       );
-      socket.emit('convo:history', { id, messages });
+      const running = Array.from(games.values()).filter((g) => g.convo === id).map(publicGame);
+      socket.emit('convo:history', { id, messages, games: running });
     } catch (err) {
       console.error(err);
       fail('Could not open that chat.');
@@ -1051,20 +1068,28 @@ function registerConversationHandlers(socket, user, allowSend) {
             id: String(orig._id),
             userId: String(orig.sender && orig.sender._id ? orig.sender._id : orig.sender),
             name: orig.sender && orig.sender.displayName ? orig.sender.displayName : 'Deleted user',
-            text: orig.text.slice(0, 100)
+            text: orig.vanishAt ? '' : orig.text.slice(0, 100)
           };
         }
       }
 
-      const doc = await Message.create({ conversation: payload.id, sender: userId, text, reply });
+      const vanishing = disappearUsers.has(userId);
+      const doc = await Message.create({
+        conversation: payload.id,
+        sender: userId,
+        text,
+        reply,
+        vanishAt: vanishing ? new Date(Date.now() + VANISH_MS) : undefined
+      });
       await Conversation.updateOne(
         { _id: payload.id },
-        { $set: { lastMessage: { text: text.slice(0, 100), sender: userId, time: doc.createdAt } } }
+        { $set: { lastMessage: { text: vanishing ? 'Disappearing message' : text.slice(0, 100), sender: userId, time: doc.createdAt } } }
       );
 
       const avatar = socket.data.avatar !== undefined ? socket.data.avatar : user.avatar;
       const msg = publicConvoMessage(doc, { id: userId, displayName: user.displayName, avatar });
       emitToMembers(members, 'convo:message', msg);
+      if (vanishing) scheduleVanish(doc._id, payload.id, VANISH_MS);
       io.to(members.map((id) => `user:${id}`))
         .except(`user:${userId}`)
         .emit('convo:typing', { convo: payload.id, id: userId, name: user.displayName, isTyping: false });
@@ -1089,14 +1114,6 @@ function registerConversationHandlers(socket, user, allowSend) {
       if (!data || typeof data !== 'object' || !REACTIONS.includes(data.emoji)) return;
       if (!allowReact()) return;
 
-      if (data.convo === 'main') {
-        const m = history.find((x) => x.id !== undefined && x.id === data.id);
-        if (!m) return;
-        m.reactions = toggleReaction(m.reactions, userId, data.emoji);
-        io.emit('reaction-update', { convo: 'main', id: m.id, reactions: publicReactions(m.reactions) });
-        return;
-      }
-
       if (!isId(data.convo) || !isId(data.id)) return;
       const members = await memberIdsOf(data.convo);
       if (!members) return;
@@ -1114,93 +1131,35 @@ function registerConversationHandlers(socket, user, allowSend) {
       console.error(err);
     }
   });
+  return { memberIdsOf };
 }
 
 io.on('connection', (socket) => {
   const user = socket.request.user; // set by Passport during the handshake
   const userId = user.id;
   const name = user.displayName;
-  const avatar = user.avatar || '';
-  const color = colorFor(userId);
 
-  // Every tab of the same user joins one private room (used for logout and typing)
+  // Every tab of the same user joins one private room: all chat traffic is delivered through it
   socket.join(`user:${userId}`);
 
-  sendMain(socket);
-  registerExtraHandlers(socket, userId, name);
-
-  // One limiter for the public room and for DMs / groups
+  // One limiter for everything this connection sends
   const allowSend = makeLimiter(RATE_LIMIT_COUNT, RATE_LIMIT_WINDOW_MS);
-  registerConversationHandlers(socket, user, allowSend);
+  const { memberIdsOf } = registerConversationHandlers(socket, user, allowSend);
+  registerExtraHandlers(socket, userId, name, memberIdsOf);
+
   listConversations(userId)
     .then((list) => socket.emit('convo:list', list))
     .catch((err) => console.error(err));
 
-  // Count tabs so a user with two tabs open is shown only once
+  // Count tabs so a user with two tabs open counts as one person
   const existing = presence.get(userId);
   if (existing) {
     existing.connections += 1;
   } else {
-    presence.set(userId, { name, avatar, color, connections: 1 });
-    systemMessage(`${name} joined the chat`);
+    presence.set(userId, { connections: 1 });
+    announcePresence(userId, true);
   }
-  broadcastOnline();
-
-  socket.on('chat-message', (payload) => {
-    const isObject = payload !== null && typeof payload === 'object';
-    const text = typeof payload === 'string' ? payload : isObject ? payload.text : null;
-    if (typeof text !== 'string') return;
-
-    const message = text.trim().slice(0, MAX_MESSAGE_LENGTH);
-    if (!message) return;
-
-    // Simple per-connection rate limit (shared with DMs and groups)
-    if (!allowSend()) {
-      socket.emit('rate-limited');
-      return;
-    }
-    const now = Date.now();
-
-    // Reply: the server looks up the original itself, so a client cannot fake what someone said.
-    // Disappearing originals are quoted without their text.
-    let reply = null;
-    if (isObject && Number.isInteger(payload.replyTo)) {
-      const orig = history.find((m) => m.id === payload.replyTo);
-      if (orig && typeof orig.text === 'string') {
-        reply = {
-          id: orig.id,
-          userId: orig.userId,
-          name: orig.name,
-          text: orig.vanishAt ? '' : orig.text.slice(0, 100)
-        };
-      }
-    }
-
-    const msg = {
-      id: nextMessageId++,
-      userId,
-      name,
-      avatar: socket.data.avatar !== undefined ? socket.data.avatar : avatar,
-      color,
-      text: message,
-      time: now,
-      vanishAt: disappearUsers.has(userId) ? now + VANISH_MS : null,
-      ttl: disappearUsers.has(userId) ? VANISH_MS : 0,
-      reactions: []
-    };
-    if (reply) msg.reply = reply;
-
-    history.push(msg);
-    if (history.length > MAX_HISTORY) history.shift();
-
-    io.emit('chat-message', publicMessage(msg));
-    if (msg.vanishAt) scheduleVanish(msg);
-    socket.broadcast.except(`user:${userId}`).emit('typing', { id: userId, name, isTyping: false });
-  });
-
-  socket.on('typing', (isTyping) => {
-    socket.broadcast.except(`user:${userId}`).emit('typing', { id: userId, name, isTyping: Boolean(isTyping) });
-  });
+  sendPresenceTo(socket, userId);
 
   socket.on('disconnect', () => {
     const entry = presence.get(userId);
@@ -1209,10 +1168,8 @@ io.on('connection', (socket) => {
     entry.connections -= 1;
     if (entry.connections <= 0) {
       presence.delete(userId);
-      io.emit('typing', { id: userId, name, isTyping: false });
-      systemMessage(`${name} left the chat`);
+      announcePresence(userId, false);
     }
-    broadcastOnline();
   });
 });
 
@@ -1224,6 +1181,15 @@ async function start() {
   try {
     await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 });
     console.log('Connected to MongoDB');
+
+    try {
+      const now = new Date();
+      await Message.deleteMany({ vanishAt: { $lte: now } });
+      const pending = await Message.find({ vanishAt: { $gt: now } }).select('conversation vanishAt').lean();
+      pending.forEach((m) => scheduleVanish(m._id, m.conversation, m.vanishAt.getTime() - Date.now()));
+    } catch (err) {
+      console.error('Could not clean up disappearing messages:', err.message);
+    }
   } catch (err) {
     console.error('Could not connect to MongoDB:', err.message);
     process.exit(1);
