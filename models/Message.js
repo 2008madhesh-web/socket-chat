@@ -27,6 +27,16 @@ const messageSchema = new mongoose.Schema(
       maxlength: 500
     },
 
+    // 'result' is the one-line summary left behind by a finished game
+    kind: {
+      type: String,
+      enum: ['text', 'result'],
+      default: 'text'
+    },
+
+    // Disappearing messages: when set, the server deletes the message at this time
+    vanishAt: { type: Date },
+
     // A snapshot of the message being replied to (filled in by the server, never by the client)
     reply: {
       id: String,
