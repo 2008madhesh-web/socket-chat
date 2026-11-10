@@ -2209,7 +2209,15 @@
         homeView.classList.toggle('in-app', inApp);
       }
 
+      let homePlayed = false;
       function setHome(open) {
+        // the entrance animation plays the first time the home page is actually on screen, however the app was opened
+        if (open && !homePlayed) {
+          homePlayed = true;
+          homeView.classList.remove('play');
+          void homeView.offsetWidth;
+          homeView.classList.add('play');
+        }
         homeView.classList.toggle('hidden', !open);
         homeBtn.classList.toggle('on', open);
         appEl.classList.toggle('home-open', open);
@@ -4418,7 +4426,6 @@
           if (ok && data.authenticated) enterChat(data.user); // connects behind the home page, top bar stays visible
           setHome(true);
           updateHomeCta();
-          homeView.classList.add('play');
         }
         splash.classList.add('gone');
       }
