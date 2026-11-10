@@ -37,6 +37,7 @@ const User = require('./models/User');
 const Conversation = require('./models/Conversation');
 const Message = require('./models/Message');
 const PushSubscription = require('./models/PushSubscription');
+const { createQuickGames } = require('./quick-games');
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                       */
@@ -677,7 +678,7 @@ function sendPresenceTo(socket, userId) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Disappearing messages + 1v1 games (Tic-Tac-Toe, Connect Four)       */
+/* Disappearing messages + 1v1 games                                   */
 /* ------------------------------------------------------------------ */
 
 const VANISH_MS = 10 * 1000; // how long a disappearing message lives
@@ -685,11 +686,21 @@ const FORFEIT_GRACE_MS = 15 * 1000; // a refresh should not forfeit a game
 const END_DELAY_MS = 3500; // how long the finished board stays up before it turns into a result line
 const MAX_STROKES = 400; // drawing game limits keep memory small
 const MAX_POINTS = 15000;
-const GAME_LABELS = { ttt: 'Tic-Tac-Toe', c4: 'Connect Four', draw: 'Drawing' };
+const GAME_LABELS = {
+  ttt: 'Tic-Tac-Toe',
+  c4: 'Connect Four',
+  draw: 'Drawing',
+  mem: 'Memory Match',
+  rps: 'Rock Paper Scissors',
+  duel: 'Reaction Duel'
+};
 const disappearUsers = new Set(); // userIds who have disappear mode switched on
 const games = new Map(); // gameId -> game
 const scheduledVanish = new Set(); // message ids that already have a vanish timer
 let nextGameId = 1;
+
+// Memory Match, Rock Paper Scissors and Reaction Duel keep their rules in quick-games.js
+const quick = createQuickGames({ broadcast: (g) => broadcastGame(g), finish: (g) => endGame(g) });
 
 const TTT_LINES = [
   [0, 1, 2], [3, 4, 5], [6, 7, 8],
@@ -763,7 +774,8 @@ function publicGame(g) {
     line: g.line,
     lastMove: g.lastMove,
     reason: g.reason,
-    strokes: g.type === 'draw' ? g.strokes : undefined
+    strokes: g.type === 'draw' ? g.strokes : undefined,
+    ...quick.publicFields(g) // scores, phase and so on for the quick games (never the hidden cards or picks)
   };
 }
 
@@ -777,17 +789,27 @@ function resultText(g) {
   const b = g.opponent ? g.opponent.name : '';
   const label = GAME_LABELS[g.type];
   if (g.type === 'draw') return `${a} and ${b} finished a drawing together`;
-  if (g.status === 'draw') return `${a} and ${b} drew at ${label}`;
+
+  // The quick games finish with a score, the winner's number first (for example "3\u20131")
+  const winnerSide = g.winner === g.challenger.id ? 0 : 1;
+  const score = !quick.isQuick(g.type)
+    ? ''
+    : g.status === 'draw'
+      ? ` ${g.scores[0]}\u2013${g.scores[1]}`
+      : ` ${g.scores[winnerSide]}\u2013${g.scores[1 - winnerSide]}`;
+
+  if (g.status === 'draw') return `${a} and ${b} drew at ${label}${score}`;
   const winner = g.winner === g.challenger.id ? g.challenger : g.opponent;
   const loser = winner === g.challenger ? g.opponent : g.challenger;
   if (g.reason === 'resigned') return `${loser.name} resigned. ${winner.name} won ${label}`;
   if (g.reason === 'left') return `${loser.name} left. ${winner.name} won ${label}`;
-  return `${winner.name} won ${label} against ${loser.name}`;
+  return `${winner.name} won ${label}${score} against ${loser.name}`;
 }
 
 // Game over: show the final board briefly, then swap the card for a result line.
 // A cancelled challenge just disappears.
 function endGame(g) {
+  quick.stop(g);
   if (g.status === 'cancelled') return removeGame(g, null);
   broadcastGame(g);
   const text = resultText(g);
@@ -796,6 +818,7 @@ function endGame(g) {
 
 function removeGame(g, text) {
   if (!games.has(g.id)) return;
+  quick.stop(g);
   games.delete(g.id);
   let result = null;
   if (text) {
@@ -831,7 +854,7 @@ function registerExtraHandlers(socket, userId, name, memberIdsOf) {
     try {
       if (!data || typeof data !== 'object') return;
       const type = data.type;
-      if (type !== 'ttt' && type !== 'c4' && type !== 'draw') return;
+      if (typeof type !== 'string' || !Object.prototype.hasOwnProperty.call(GAME_LABELS, type)) return;
       if (!isId(data.convo)) return;
 
       const now = Date.now();
@@ -851,7 +874,7 @@ function registerExtraHandlers(socket, userId, name, memberIdsOf) {
         status: 'open',
         challenger: { id: userId, name },
         opponent: null,
-        board: type === 'draw' ? [] : new Array(type === 'ttt' ? 9 : C4_ROWS * C4_COLS).fill(null),
+        board: type === 'ttt' ? new Array(9).fill(null) : type === 'c4' ? new Array(C4_ROWS * C4_COLS).fill(null) : [],
         strokes: [],
         strokeMap: new Map(),
         totalPts: 0,
@@ -861,6 +884,7 @@ function registerExtraHandlers(socket, userId, name, memberIdsOf) {
         lastMove: null,
         reason: null
       };
+      if (quick.isQuick(type)) quick.init(game);
       games.set(game.id, game);
 
       emitToMembers(members, 'game-new', { game: publicGame(game), time: now });
@@ -880,6 +904,7 @@ function registerExtraHandlers(socket, userId, name, memberIdsOf) {
     g.opponent = { id: userId, name };
     g.status = 'playing';
     g.turn = g.challenger.id; // the challenger goes first
+    if (quick.isQuick(g.type)) quick.start(g); // sets up the quick games (the real-time ones have no turns)
     broadcastGame(g);
   });
 
@@ -906,7 +931,12 @@ function registerExtraHandlers(socket, userId, name, memberIdsOf) {
   socket.on('make-move', (data) => {
     if (!data || typeof data !== 'object') return;
     const g = games.get(data.gameId);
-    if (!g || g.status !== 'playing' || g.type === 'draw' || g.turn !== userId) return;
+    if (!g || g.status !== 'playing' || g.type === 'draw') return;
+
+    // Memory Match, Rock Paper Scissors and Reaction Duel decide their own moves (quick-games.js)
+    if (quick.isQuick(g.type)) return quick.move(g, userId, data.index);
+
+    if (g.turn !== userId) return;
 
     const index = data.index;
     if (!Number.isInteger(index)) return;
