@@ -1009,16 +1009,18 @@
     }
     @media (max-width: 400px) { .me { display: none; } }
 
-    /* ================= background: a quiet dot grid and one slow light ================= */
-    @property --lx { syntax: "<percentage>"; inherits: false; initial-value: 18%; }
-    @property --ly { syntax: "<percentage>"; inherits: false; initial-value: 28%; }
+    /* ================= background: bubbles rising from the send button ================= */
     :root {
-      --dot: rgba(255, 255, 255, 0.07);
-      --dot-lit: rgba(236, 90, 133, 0.8);
+      --bub-fill: rgba(236, 90, 133, 0.10);
+      --bub-line: rgba(255, 255, 255, 0.16);
+      --bub-glow: rgba(236, 90, 133, 0.22);
+      --bub-shine: rgba(255, 255, 255, 0.30);
     }
     :root[data-theme="light"] {
-      --dot: rgba(60, 40, 80, 0.11);
-      --dot-lit: rgba(221, 74, 118, 0.75);
+      --bub-fill: rgba(221, 74, 118, 0.07);
+      --bub-line: rgba(221, 74, 118, 0.30);
+      --bub-glow: rgba(221, 74, 118, 0.18);
+      --bub-shine: rgba(255, 255, 255, 0.85);
     }
     .app { isolation: isolate; }
     .chat-bg {
@@ -1027,24 +1029,37 @@
       z-index: -1;
       overflow: hidden;
       pointer-events: none;
-      contain: layout paint style;
-      background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.6px);
-      background-size: 26px 26px;
+      container-type: size;
+      --w: min(100vw, 760px);
+      --rise: -92vh;
     }
-    /* the same grid in the accent colour, revealed only under a soft spotlight that wanders */
-    .chat-bg::after {
-      content: "";
+    @supports (height: 1cqh) {
+      .chat-bg { --w: 100cqw; --rise: calc(-100cqh - 40px); }
+    }
+    /* each bubble is born under the send button, drifts up and to the left, and fades out */
+    .chat-bg i {
       position: absolute;
-      inset: 0;
-      background-image: radial-gradient(circle, var(--dot-lit) 1.3px, transparent 2px);
-      background-size: 26px 26px;
-      -webkit-mask-image: radial-gradient(circle 170px at var(--lx) var(--ly), #000 0%, transparent 100%);
-      mask-image: radial-gradient(circle 170px at var(--lx) var(--ly), #000 0%, transparent 100%);
-      animation: lightX 19s ease-in-out infinite alternate, lightY 27s ease-in-out infinite alternate;
+      width: var(--s);
+      height: var(--s);
+      right: calc(38px - var(--s) / 2 + var(--ox));
+      bottom: calc(36px - var(--s) / 2 + env(safe-area-inset-bottom, 0px));
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 26%, var(--bub-shine), transparent 45%), var(--bub-fill);
+      box-shadow: inset 0 0 0 1px var(--bub-line), 0 0 16px var(--bub-glow);
+      opacity: 0;
+      will-change: transform, opacity;
+      animation: bubbleRise var(--dur) cubic-bezier(0.3, 0.1, 0.4, 1) var(--delay) infinite;
     }
-    @keyframes lightX { from { --lx: 6%; } to { --lx: 94%; } }
-    @keyframes lightY { from { --ly: 8%; } to { --ly: 92%; } }
-    @media (prefers-reduced-motion: reduce) { .chat-bg::after { animation: none; } }
+    @keyframes bubbleRise {
+      0% { transform: translate3d(0, 0, 0) scale(0.35); opacity: 0; }
+      10% { opacity: var(--o); }
+      55% {
+        transform: translate3d(calc(var(--k) * var(--w) * 0.45 + var(--sway)), calc(var(--rise) * 0.55), 0) scale(0.9);
+        opacity: var(--o);
+      }
+      100% { transform: translate3d(calc(var(--k) * var(--w)), var(--rise), 0) scale(1.2); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) { .chat-bg i { animation: none; opacity: 0; } }
 
     /* ================= result line that replaces a finished game ================= */
     .system.result { background: color-mix(in srgb, var(--accent) 14%, var(--field)); color: var(--text); font-weight: 600; }
@@ -1208,6 +1223,204 @@
     .op-live { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--online); }
     .op-empty { padding: 12px 10px; color: var(--muted); font-size: 0.85rem; }
     @media (max-width: 420px) { .online-pop { top: 58px; } }
+
+    /* ================= header: chats button (left) and settings (right) ================= */
+    [hidden] { display: none !important; }
+    .header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #convo-btn.flag::after {
+      content: "";
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px var(--field);
+    }
+    @media (max-width: 520px) {
+      .header-left { gap: 8px; }
+      header .brand > .logo { display: none; }
+    }
+
+    /* ================= chats drawer ================= */
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 17;
+      background: var(--scrim);
+      -webkit-backdrop-filter: blur(3px);
+      backdrop-filter: blur(3px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s;
+    }
+    .drawer-backdrop.open { opacity: 1; visibility: visible; }
+    .drawer {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 18;
+      width: min(330px, 88%);
+      display: flex;
+      flex-direction: column;
+      background: var(--menu-bg);
+      border-right: 1px solid var(--border);
+      box-shadow: var(--pop-shadow);
+      transform: translateX(-102%);
+      visibility: hidden;
+      transition: transform 0.5s var(--ease), visibility 0.5s;
+    }
+    .drawer.open { transform: none; visibility: visible; }
+    .drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 8px; }
+    .drawer-head h3 { flex: 1; margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.03em; }
+    .drawer-list { flex: 1; overflow-y: auto; padding: 0 8px 18px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    .drawer-sec { padding: 14px 10px 6px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+    .drawer-hint { padding: 12px 10px; color: var(--muted); font-size: 0.84rem; }
+    .convo-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 16px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      transition: background-color 0.2s ease, transform 0.25s var(--spring);
+    }
+    .convo-item:hover, .convo-item.active { background: var(--field); }
+    .convo-item:active { transform: scale(0.98); }
+    .convo-item .avatar { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; font-size: 1rem; }
+    .room-ico { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #ffffff; }
+    .room-ico svg { width: 22px; height: 22px; }
+    .convo-text { min-width: 0; flex: 1; }
+    .convo-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; font-weight: 700; }
+    .convo-prev { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
+    .convo-badge {
+      flex: 0 0 auto;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .composer.no-actions #action-btn { display: none; }
+
+    /* ================= new chat sheet ================= */
+    .tabs[data-mode="group"] .tab-ind { transform: translateX(100%); }
+    .picked { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .pick-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      padding: 5px 6px 5px 12px;
+      border-radius: 999px;
+      background: var(--field);
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .pick-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pick-chip i { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--bubble); font-style: normal; font-size: 0.8rem; line-height: 1; }
+    .people { list-style: none; margin: 10px 0 12px; padding: 0; max-height: min(34vh, 230px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    .people .op-empty { padding: 12px 6px; }
+    .person {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 7px 8px;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      transition: background-color 0.2s ease;
+    }
+    .person:hover { background: var(--field); }
+    .person .avatar { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; font-size: 0.9rem; }
+    .p-text { min-width: 0; flex: 1; }
+    .p-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; font-weight: 600; }
+    .p-user { display: block; color: var(--muted); font-size: 0.76rem; }
+    .p-tick {
+      flex: 0 0 20px;
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 2px var(--border);
+      color: transparent;
+      font-size: 0.7rem;
+      font-weight: 800;
+      transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .person.sel .p-tick { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+
+    /* ================= reactions ================= */
+    .bubble { -webkit-touch-callout: none; }
+    .row.holding .bubble { scale: 0.96; transition: scale 0.38s ease; }
+    .row.react-target .bubble { scale: 1.03; transition: scale 0.3s var(--spring); }
+    .reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; white-space: normal; }
+    .react-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: inherit;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      transition: transform 0.25s var(--spring);
+    }
+    .react-chip:active { transform: scale(0.92); }
+    .react-chip .n { font-size: 0.72rem; font-weight: 700; }
+    .react-chip.mine { box-shadow: inset 0 0 0 1.5px var(--accent-hover); }
+    .react-chip.fresh { animation: chipIn 0.4s var(--spring) both; }
+    @keyframes chipIn { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
+    :root[data-theme="light"] .react-chip { background: rgba(60, 40, 80, 0.08); }
+    .row.own .react-chip { background: rgba(0, 0, 0, 0.18); }
+    .row.own .react-chip.mine { box-shadow: inset 0 0 0 1.5px #ffffff; }
+    .react-pop {
+      position: absolute;
+      z-index: 16;
+      display: flex;
+      gap: 2px;
+      padding: 6px;
+      border-radius: 999px;
+      background: var(--menu-bg);
+      border: 1px solid var(--border);
+      box-shadow: var(--pop-shadow);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px) scale(0.85);
+      transition: opacity 0.2s ease, transform 0.45s var(--spring), visibility 0.2s;
+    }
+    .react-pop.open { opacity: 1; visibility: visible; transform: none; }
+    .react-pop button {
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: transparent;
+      font-size: 1.45rem;
+      line-height: 1;
+      transition: transform 0.3s var(--spring), background-color 0.2s ease;
+    }
+    .react-pop button:hover { transform: scale(1.25) translateY(-3px); }
+    .react-pop button.mine { background: var(--field); }
+    .react-pop.open button { animation: reactPop 0.5s var(--spring) backwards; animation-delay: calc(var(--n) * 30ms); }
+    @keyframes reactPop { from { opacity: 0; transform: translateY(10px) scale(0.4); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
@@ -1275,14 +1488,19 @@
     <div class="app">
       <div class="chat-bg" aria-hidden="true"></div>
       <header>
+        <div class="header-left">
+          <button class="icon-btn" id="convo-btn" type="button" aria-label="Chats" title="Chats" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
         <div class="brand">
           <div class="logo" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.55L3 20.5l1.5-5.2A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke-width="2.6"/></svg>
           </div>
           <div class="brand-text">
-            <h2>Atti chat</h2>
-            <div class="credit">developed by <b>Madhesh</b></div>
+            <h2 id="brand-title">Atti chat</h2>
+            <div class="credit" id="brand-sub">developed by <b>Madhesh</b></div>
           </div>
+        </div>
         </div>
 
         <div class="header-right">
@@ -1296,8 +1514,8 @@
             <span class="me-name" id="me-name"></span>
           </div>
           <div class="menu-wrap">
-            <button class="icon-btn" id="menu-btn" type="button" aria-label="Options" title="Options" aria-haspopup="menu" aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            <button class="icon-btn" id="menu-btn" type="button" aria-label="Settings" title="Settings" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
             <div class="menu" id="menu" role="menu" aria-hidden="true">
               <div class="menu-user"><span id="menu-avatar"></span><span class="menu-user-name" id="menu-name"></span></div>
@@ -1329,6 +1547,22 @@
         <div class="op-head"><strong>Online now</strong><span id="op-count"></span></div>
         <ul class="op-list" id="op-list"></ul>
       </div>
+
+      <div class="drawer-backdrop" id="drawer-backdrop"></div>
+      <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Chats">
+        <div class="drawer-head">
+          <h3>Chats</h3>
+          <button class="icon-btn" id="new-chat-btn" type="button" aria-label="New chat" title="New chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button class="icon-btn" id="drawer-close" type="button" aria-label="Close chats" title="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="drawer-list" id="drawer-list"></div>
+      </aside>
+
+      <div class="react-pop" id="react-pop" role="menu" aria-label="React to message" aria-hidden="true"></div>
 
       <div id="messages"></div>
 
@@ -1369,6 +1603,30 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         </button>
       </form>
+
+      <div class="sheet-backdrop" id="new-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="new-title">
+          <h3 id="new-title">New chat</h3>
+          <p class="sheet-sub">Message one person, or start a group.</p>
+          <div class="tabs" id="new-tabs" data-mode="dm" role="tablist">
+            <span class="tab-ind"></span>
+            <button type="button" class="tab active" data-mode="dm" role="tab" aria-selected="true">Direct message</button>
+            <button type="button" class="tab" data-mode="group" role="tab" aria-selected="false">New group</button>
+          </div>
+          <div class="field" id="group-field" hidden>
+            <label for="group-name">Group name</label>
+            <input id="group-name" type="text" maxlength="40" autocomplete="off" placeholder="Name your group" />
+          </div>
+          <div class="picked" id="picked" hidden></div>
+          <input id="user-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Search people" aria-label="Search people" />
+          <ul class="people" id="people"></ul>
+          <div class="form-error" id="new-error" role="alert"></div>
+          <div class="sheet-actions">
+            <button type="button" class="ghost" id="new-cancel">Cancel</button>
+            <button type="button" class="primary" id="new-create" disabled hidden>Create group</button>
+          </div>
+        </div>
+      </div>
 
       <div class="sheet-backdrop" id="dp-modal" aria-hidden="true">
         <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dp-title">
@@ -1446,6 +1704,26 @@
       const rbName = $('rb-name');
       const rbSnip = $('rb-snip');
       const replyClose = $('reply-close');
+      const convoBtn = $('convo-btn');
+      const drawer = $('drawer');
+      const drawerBackdrop = $('drawer-backdrop');
+      const drawerList = $('drawer-list');
+      const drawerClose = $('drawer-close');
+      const newChatBtn = $('new-chat-btn');
+      const brandTitle = $('brand-title');
+      const brandSub = $('brand-sub');
+      const reactPop = $('react-pop');
+      const newModal = $('new-modal');
+      const newTabs = $('new-tabs');
+      const newTabButtons = Array.from(newTabs.querySelectorAll('.tab'));
+      const groupField = $('group-field');
+      const groupName = $('group-name');
+      const pickedEl = $('picked');
+      const userSearch = $('user-search');
+      const peopleEl = $('people');
+      const newError = $('new-error');
+      const newCancel = $('new-cancel');
+      const newCreate = $('new-create');
 
       /* ---------- state ---------- */
       let me = null; // the logged-in user
@@ -1462,6 +1740,11 @@
       let lastSender = null;
       let lastTime = 0;
       const typingUsers = new Map();
+      let activeConvo = 'main'; // 'main' is the public room, anything else is a DM / group id
+      const convos = new Map(); // id -> DM / group
+      const unread = new Map(); // id -> unread count (this visit only)
+      let typingConvo = 'main';
+      let pendingOpen = null;
 
       // The socket only connects after the user is authenticated
       const socket = io({ autoConnect: false });
@@ -1618,6 +1901,18 @@
         setActionMenu(false);
         jumpBtn.classList.remove('show');
         setComposerEnabled(false);
+        activeConvo = 'main';
+        typingConvo = 'main';
+        pendingOpen = null;
+        convos.clear();
+        unread.clear();
+        setDrawer(false);
+        closeNew();
+        closeReactions();
+        renderHeader();
+        renderDrawer();
+        renderUnreadFlag();
+        refreshComposerLook();
         renderStatus();
       }
 
@@ -1690,6 +1985,7 @@
           dot.className = 'dot';
           statusText.textContent = hasConnected ? 'Reconnecting...' : 'Connecting...';
         }
+        refreshDrawer();
       }
 
       function updateSend() {
@@ -1818,6 +2114,7 @@
         row.appendChild(replyBtn);
 
         messagesEl.appendChild(row);
+        renderReactions(row, msg.reactions);
       }
 
       function addSystemMessage(text, isResult) {
@@ -1842,18 +2139,25 @@
       }
 
       /* ---------- typing indicator (outgoing) ---------- */
+      function emitTyping(on, convoId) {
+        if (!socket.connected) return;
+        if (convoId === 'main') socket.emit('typing', on);
+        else socket.emit('convo:typing', { id: convoId, isTyping: on });
+      }
       function stopTyping() {
         clearTimeout(typingTimer);
         if (isTyping) {
           isTyping = false;
-          if (socket.connected) socket.emit('typing', false);
+          emitTyping(false, typingConvo);
         }
       }
       function handleTyping() {
         if (!socket.connected) return;
+        if (isTyping && typingConvo !== activeConvo) stopTyping();
         if (!isTyping) {
           isTyping = true;
-          socket.emit('typing', true);
+          typingConvo = activeConvo;
+          emitTyping(true, typingConvo);
         }
         clearTimeout(typingTimer);
         typingTimer = setTimeout(stopTyping, 2000);
@@ -1869,7 +2173,11 @@
         const text = input.value.trim();
         if (!text || !socket.connected) return;
 
-        socket.emit('chat-message', replyTo ? { text, replyTo: replyTo.id } : text);
+        if (activeConvo === 'main') {
+          socket.emit('chat-message', replyTo ? { text, replyTo: replyTo.id } : text);
+        } else {
+          socket.emit('convo:message', { id: activeConvo, text, replyTo: replyTo ? replyTo.id : undefined });
+        }
         cancelReply();
         stopTyping();
         input.value = '';
@@ -1911,6 +2219,7 @@
       });
 
       socket.on('history', (list) => {
+        if (activeConvo !== 'main') return;
         messagesEl.innerHTML = '';
         lastSender = null;
         gameCards.clear();
@@ -1930,6 +2239,14 @@
 
       socket.on('chat-message', (msg) => {
         const own = Boolean(me) && msg.userId === me.id;
+        if (activeConvo !== 'main') {
+          if (!own) {
+            unread.set('main', (unread.get('main') || 0) + 1);
+            renderUnreadFlag();
+            refreshDrawer();
+          }
+          return;
+        }
         const stick = isNearBottom() || own;
         typingUsers.delete(msg.userId);
         renderTyping();
@@ -1939,6 +2256,7 @@
       });
 
       socket.on('system-message', (msg) => {
+        if (activeConvo !== 'main') return;
         const stick = isNearBottom();
         addSystemMessage(msg.text);
         if (stick) scrollToBottom(true);
@@ -1957,6 +2275,7 @@
       });
 
       socket.on('typing', (data) => {
+        if (activeConvo !== 'main') return;
         if (data.isTyping) typingUsers.set(data.id, data.name);
         else typingUsers.delete(data.id);
         renderTyping();
@@ -2093,6 +2412,8 @@
           const fresh = buildAvatar(row.dataset.name, row.dataset.color, avatar, old.classList.contains('hidden') ? 'hidden' : '');
           row.replaceChild(fresh, old);
         });
+        convos.forEach((c) => c.members.forEach((m) => { if (m.id === userId) m.avatar = avatar; }));
+        refreshDrawer();
       }
       socket.on('avatar-updated', (d) => applyAvatarUpdate(d.userId, d.avatar));
 
@@ -2166,7 +2487,7 @@
 
       /* ---------- reply ---------- */
       function startReply(row) {
-        const mid = Number(row.dataset.mid);
+        const mid = activeConvo === 'main' ? Number(row.dataset.mid) : row.dataset.mid;
         if (!mid) return;
         const own = row.classList.contains('own');
         const bubble = row.querySelector('.bubble');
@@ -2542,6 +2863,7 @@
         const own = Boolean(me) && data.game.challenger.id === me.id;
         const stick = isNearBottom() || own;
         gameStates.set(data.game.id, data.game);
+        if (activeConvo !== 'main') return;
         addGameCard(data.game, true);
         if (stick) scrollToBottom(true);
         else jumpBtn.classList.add('show');
@@ -2571,8 +2893,7 @@
         disappearOn = on;
         vanishBtn.setAttribute('aria-checked', String(on));
         menuBtn.classList.toggle('flag', on);
-        form.classList.toggle('disappear-on', on);
-        input.placeholder = on ? 'Disappearing mode: gone in 10s' : 'Write a message';
+        refreshComposerLook();
         if (persist && me) {
           try { localStorage.setItem(vanishKey(me.id), on ? '1' : '0'); } catch (e) { /* storage blocked */ }
         }
@@ -2898,6 +3219,592 @@
         }
         collapseCard(entry.el);
       });
+
+      /* ================================================================ */
+      /* Chats: the drawer, direct messages and groups                    */
+      /* ================================================================ */
+
+      const ROOM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.55L3 20.5l1.5-5.2A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke-width="2.6"/></svg>';
+
+      function otherMember(c) {
+        return c.members.find((m) => !me || m.id !== me.id) || c.members[0] || { displayName: 'Unknown', color: '', avatar: '' };
+      }
+      function convoName(c) {
+        return c.type === 'group' ? c.name : otherMember(c).displayName;
+      }
+      function convoAvatar(c) {
+        if (c.type === 'group') return buildAvatar(c.name, c.color, '');
+        const o = otherMember(c);
+        return buildAvatar(o.displayName, o.color, o.avatar);
+      }
+      function convoStamp(c) {
+        return c.lastMessage ? c.lastMessage.time : c.createdAt;
+      }
+      function convoPreview(c) {
+        const l = c.lastMessage;
+        if (!l) return c.type === 'group' ? c.members.length + ' members' : 'No messages yet';
+        if (me && l.userId === me.id) return 'You: ' + l.text;
+        if (c.type === 'group') {
+          const m = c.members.find((x) => x.id === l.userId);
+          return (m ? m.displayName.split(' ')[0] : 'Someone') + ': ' + l.text;
+        }
+        return l.text;
+      }
+
+      /* ---------- header + composer follow the open chat ---------- */
+      function renderHeader() {
+        if (activeConvo === 'main') {
+          brandTitle.textContent = 'Atti chat';
+          brandSub.innerHTML = 'developed by <b>Madhesh</b>';
+          return;
+        }
+        const c = convos.get(activeConvo);
+        brandTitle.textContent = c ? convoName(c) : 'Chat';
+        brandSub.textContent = c ? (c.type === 'group' ? c.members.length + ' members' : 'Direct message') : '';
+      }
+
+      // Games and disappearing messages belong to the public room, so DMs and groups hide them
+      function refreshComposerLook() {
+        const inRoom = activeConvo === 'main';
+        form.classList.toggle('disappear-on', disappearOn && inRoom);
+        form.classList.toggle('no-actions', !inRoom);
+        input.placeholder = inRoom && disappearOn ? 'Disappearing mode: gone in 10s' : 'Write a message';
+      }
+
+      function renderUnreadFlag() {
+        let total = 0;
+        unread.forEach((n) => { total += n; });
+        convoBtn.classList.toggle('flag', total > 0);
+      }
+
+      /* ---------- the drawer ---------- */
+      function drawerSection(label) {
+        const h = el('drawer-sec');
+        h.textContent = label;
+        return h;
+      }
+
+      function convoRow(id, avatarEl, name, preview) {
+        const b = el('convo-item' + (id === activeConvo ? ' active' : ''), 'button');
+        b.type = 'button';
+        b.dataset.id = id;
+        const text = el('convo-text');
+        const n = el('convo-name', 'span');
+        n.textContent = name;
+        const p = el('convo-prev', 'span');
+        p.textContent = preview;
+        text.append(n, p);
+        b.append(avatarEl, text);
+        const count = unread.get(id) || 0;
+        if (count > 0) {
+          const badge = el('convo-badge', 'span');
+          badge.textContent = count > 99 ? '99+' : String(count);
+          b.appendChild(badge);
+        }
+        b.addEventListener('click', () => openConvo(id));
+        return b;
+      }
+
+      function renderDrawer() {
+        drawerList.textContent = '';
+
+        const roomIcon = el('room-ico');
+        roomIcon.innerHTML = ROOM_SVG;
+        drawerList.appendChild(drawerSection('Room'));
+        drawerList.appendChild(convoRow('main', roomIcon, 'Everyone', onlineCount === null ? 'Public room' : 'Public room \u00b7 ' + onlineCount + ' online'));
+
+        const list = Array.from(convos.values()).sort((a, b) => convoStamp(b) - convoStamp(a));
+        const groups = list.filter((c) => c.type === 'group');
+        const dms = list.filter((c) => c.type === 'dm');
+
+        if (groups.length) {
+          drawerList.appendChild(drawerSection('Groups'));
+          groups.forEach((c) => drawerList.appendChild(convoRow(c.id, convoAvatar(c), convoName(c), convoPreview(c))));
+        }
+        if (dms.length) {
+          drawerList.appendChild(drawerSection('Direct messages'));
+          dms.forEach((c) => drawerList.appendChild(convoRow(c.id, convoAvatar(c), convoName(c), convoPreview(c))));
+        }
+        if (!list.length) {
+          const hint = el('drawer-hint');
+          hint.textContent = 'No direct messages or groups yet. Tap + to start one.';
+          drawerList.appendChild(hint);
+        }
+      }
+
+      // Only redraws while the drawer is on screen
+      function refreshDrawer() {
+        if (drawer.classList.contains('open')) renderDrawer();
+      }
+
+      function setDrawer(open) {
+        if (open) {
+          setMenu(false);
+          setOnlinePop(false);
+          setActionMenu(false);
+          closeReactions();
+          renderDrawer();
+        }
+        drawer.classList.toggle('open', open);
+        drawerBackdrop.classList.toggle('open', open);
+        drawer.setAttribute('aria-hidden', String(!open));
+        convoBtn.setAttribute('aria-expanded', String(open));
+      }
+      convoBtn.addEventListener('click', () => setDrawer(!drawer.classList.contains('open')));
+      drawerClose.addEventListener('click', () => setDrawer(false));
+      drawerBackdrop.addEventListener('click', () => setDrawer(false));
+      newChatBtn.addEventListener('click', () => openNew());
+
+      /* ---------- switching chats ---------- */
+      function openConvo(id) {
+        setDrawer(false);
+        if (id === activeConvo) return;
+        if (id !== 'main' && !convos.has(id)) return;
+
+        stopTyping();
+        activeConvo = id;
+        unread.delete(id);
+        typingUsers.clear();
+        renderTyping();
+        cancelReply();
+        closeReactions();
+        messagesEl.innerHTML = '';
+        lastSender = null;
+        lastTime = 0;
+        gameCards.clear();
+        jumpBtn.classList.remove('show');
+
+        renderHeader();
+        refreshComposerLook();
+        renderUnreadFlag();
+        if (socket.connected) socket.emit('convo:open', id);
+      }
+
+      // After a reconnect the server starts us on the public room again, so go back to the open chat
+      socket.on('connect', () => {
+        if (activeConvo !== 'main') socket.emit('convo:open', activeConvo);
+      });
+
+      socket.on('convo:list', (list) => {
+        convos.clear();
+        list.forEach((c) => convos.set(c.id, c));
+        renderHeader();
+        refreshDrawer();
+        if (pendingOpen && convos.has(pendingOpen)) {
+          const id = pendingOpen;
+          pendingOpen = null;
+          openConvo(id);
+        }
+      });
+
+      socket.on('convo:new', (c) => {
+        const old = convos.get(c.id);
+        if (old && old.lastMessage && (!c.lastMessage || old.lastMessage.time > c.lastMessage.time)) {
+          c.lastMessage = old.lastMessage;
+        }
+        convos.set(c.id, c);
+        refreshDrawer();
+      });
+
+      // The server created (or found) the chat we asked for: open it
+      socket.on('convo:started', (d) => {
+        if (convos.has(d.id)) {
+          openConvo(d.id);
+        } else {
+          pendingOpen = d.id;
+          socket.emit('convo:list');
+        }
+      });
+
+      socket.on('convo:history', (d) => {
+        if (d.id !== activeConvo) return;
+        messagesEl.innerHTML = '';
+        lastSender = null;
+        lastTime = 0;
+        d.messages.forEach((m) => addChatMessage(m, false));
+        showEmptyIfNeeded();
+        scrollToBottom(false);
+      });
+
+      socket.on('convo:message', (msg) => {
+        const c = convos.get(msg.convo);
+        if (!c) { socket.emit('convo:list'); return; }
+        c.lastMessage = { text: msg.text.slice(0, 100), userId: msg.userId, time: msg.time };
+        const own = Boolean(me) && msg.userId === me.id;
+
+        if (msg.convo === activeConvo) {
+          const stick = isNearBottom() || own;
+          typingUsers.delete(msg.userId);
+          renderTyping();
+          addChatMessage(msg, true);
+          if (stick) scrollToBottom(true);
+          else jumpBtn.classList.add('show');
+        } else if (!own) {
+          unread.set(msg.convo, (unread.get(msg.convo) || 0) + 1);
+          renderUnreadFlag();
+        }
+        refreshDrawer();
+      });
+
+      socket.on('convo:typing', (d) => {
+        if (d.convo !== activeConvo) return;
+        if (d.isTyping) typingUsers.set(d.id, d.name);
+        else typingUsers.delete(d.id);
+        renderTyping();
+      });
+
+      socket.on('convo-error', (d) => showToast(d.message || 'Something went wrong.'));
+
+      /* ---------- new chat sheet: pick a person, or build a group ---------- */
+      let newMode = 'dm';
+      const picked = new Map(); // id -> user (group mode)
+      let searchTimer = null;
+      let searchSeq = 0;
+
+      function showNewError(message) {
+        newError.textContent = message;
+        newError.classList.remove('show');
+        void newError.offsetWidth;
+        newError.classList.add('show');
+      }
+
+      function updateCreate() {
+        newCreate.disabled = !(groupName.value.trim() && picked.size >= 1);
+      }
+
+      function renderPicked() {
+        pickedEl.textContent = '';
+        pickedEl.hidden = newMode !== 'group' || picked.size === 0;
+        picked.forEach((u) => {
+          const chip = el('pick-chip', 'button');
+          chip.type = 'button';
+          chip.setAttribute('aria-label', 'Remove ' + u.displayName);
+          const n = el('', 'span');
+          n.textContent = u.displayName;
+          const x = el('', 'i');
+          x.textContent = '\u00d7';
+          chip.append(n, x);
+          chip.addEventListener('click', () => {
+            picked.delete(u.id);
+            renderPicked();
+            updateCreate();
+            const row = peopleEl.querySelector('.person[data-id="' + u.id + '"]');
+            if (row) row.classList.remove('sel');
+          });
+          pickedEl.appendChild(chip);
+        });
+      }
+
+      function renderPeople(users) {
+        peopleEl.textContent = '';
+        if (!users.length) {
+          const li = el('op-empty', 'li');
+          li.textContent = userSearch.value.trim() ? 'No one found.' : 'No one else has signed up yet.';
+          peopleEl.appendChild(li);
+          return;
+        }
+        users.forEach((u) => {
+          const li = document.createElement('li');
+          const b = el('person' + (picked.has(u.id) ? ' sel' : ''), 'button');
+          b.type = 'button';
+          b.dataset.id = u.id;
+          const text = el('p-text');
+          const n = el('p-name', 'span');
+          n.textContent = u.displayName;
+          text.appendChild(n);
+          if (u.username) {
+            const un = el('p-user', 'span');
+            un.textContent = '@' + u.username;
+            text.appendChild(un);
+          }
+          b.append(buildAvatar(u.displayName, u.color, u.avatar), text);
+          if (newMode === 'group') {
+            const tick = el('p-tick', 'span');
+            tick.textContent = '\u2713';
+            b.appendChild(tick);
+          }
+          b.addEventListener('click', () => {
+            if (newMode === 'dm') {
+              if (!socket.connected) return showNewError('Still connecting. Try again in a moment.');
+              closeNew();
+              socket.emit('dm:start', u.id);
+              return;
+            }
+            if (picked.has(u.id)) picked.delete(u.id);
+            else picked.set(u.id, u);
+            b.classList.toggle('sel', picked.has(u.id));
+            renderPicked();
+            updateCreate();
+          });
+          li.appendChild(b);
+          peopleEl.appendChild(li);
+        });
+      }
+
+      async function runSearch(q) {
+        const seq = ++searchSeq;
+        const { ok, data } = await request('GET', '/api/users/search?q=' + encodeURIComponent(q.trim()));
+        if (seq !== searchSeq) return; // a newer search is already on its way
+        if (!ok) return showNewError(data.error || 'Could not load people.');
+        newError.classList.remove('show');
+        renderPeople(data.users || []);
+      }
+
+      function setNewMode(mode) {
+        newMode = mode;
+        newTabs.dataset.mode = mode;
+        newTabButtons.forEach((t) => {
+          const active = t.dataset.mode === mode;
+          t.classList.toggle('active', active);
+          t.setAttribute('aria-selected', String(active));
+        });
+        groupField.hidden = mode !== 'group';
+        newCreate.hidden = mode !== 'group';
+        picked.clear();
+        renderPicked();
+        updateCreate();
+        runSearch(userSearch.value);
+      }
+      newTabButtons.forEach((t) => t.addEventListener('click', () => setNewMode(t.dataset.mode)));
+
+      function openNew() {
+        setDrawer(false);
+        userSearch.value = '';
+        groupName.value = '';
+        newError.classList.remove('show');
+        setNewMode('dm');
+        newModal.classList.add('open');
+        newModal.setAttribute('aria-hidden', 'false');
+        setTimeout(() => userSearch.focus(), 350);
+      }
+      function closeNew() {
+        newModal.classList.remove('open');
+        newModal.setAttribute('aria-hidden', 'true');
+      }
+
+      userSearch.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => runSearch(userSearch.value), 250);
+      });
+      groupName.addEventListener('input', updateCreate);
+      newCancel.addEventListener('click', closeNew);
+      newModal.addEventListener('click', (e) => { if (e.target === newModal) closeNew(); });
+      newCreate.addEventListener('click', () => {
+        if (newCreate.disabled) return;
+        if (!socket.connected) return showNewError('Still connecting. Try again in a moment.');
+        socket.emit('group:create', { name: groupName.value.trim(), members: Array.from(picked.keys()) });
+        closeNew();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        setDrawer(false);
+        closeNew();
+        closeReactions();
+      });
+
+      /* ================================================================ */
+      /* Reactions: hold a message, pick an emoji                         */
+      /* ================================================================ */
+
+      // The same six the server accepts
+      const REACTIONS = ['\u2764\uFE0F', '\uD83D\uDE02', '\uD83D\uDC4D', '\uD83D\uDE2E', '\uD83D\uDE22', '\uD83D\uDD25'];
+      let reactTarget = null;
+      let reactOpenedAt = 0;
+
+      REACTIONS.forEach((emoji, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = emoji;
+        b.dataset.emoji = emoji;
+        b.style.setProperty('--n', i);
+        b.setAttribute('aria-label', 'React ' + emoji);
+        b.addEventListener('click', () => {
+          if (!reactTarget || Date.now() - reactOpenedAt < 250) return; // ignore the finger that just lifted
+          sendReaction(reactTarget, emoji);
+          closeReactions();
+        });
+        reactPop.appendChild(b);
+      });
+
+      function sendReaction(row, emoji) {
+        if (!socket.connected) return;
+        const raw = row.dataset.mid;
+        const id = activeConvo === 'main' ? Number(raw) : raw;
+        socket.emit('react', { convo: activeConvo, id, emoji });
+      }
+
+      // The little emoji pills under a message
+      function renderReactions(row, map) {
+        const prev = row._reactions || {};
+        row._reactions = map || {};
+        const bubble = row.querySelector('.bubble');
+        if (!bubble) return;
+        const old = bubble.querySelector('.reacts');
+        if (old) old.remove();
+
+        const entries = Object.entries(row._reactions).filter((e) => e[1].length);
+        if (!entries.length) return;
+
+        const wrap = el('reacts');
+        entries.forEach(([emoji, users]) => {
+          const chip = el('react-chip' + (me && users.indexOf(me.id) !== -1 ? ' mine' : ''), 'button');
+          chip.type = 'button';
+          chip.setAttribute('aria-label', emoji + ' ' + users.length);
+          if (!prev[emoji] || prev[emoji].length !== users.length) chip.classList.add('fresh');
+          const e = el('', 'span');
+          e.textContent = emoji;
+          chip.appendChild(e);
+          if (users.length > 1) {
+            const n = el('n', 'span');
+            n.textContent = String(users.length);
+            chip.appendChild(n);
+          }
+          chip.addEventListener('click', () => sendReaction(row, emoji));
+          wrap.appendChild(chip);
+        });
+        const anchor = bubble.querySelector('.msg-text');
+        if (anchor) anchor.after(wrap);
+        else bubble.appendChild(wrap);
+      }
+
+      socket.on('reaction-update', (d) => {
+        if (d.convo !== activeConvo) return;
+        const row = messagesEl.querySelector('.row[data-mid="' + d.id + '"]');
+        if (!row) return;
+        const stick = isNearBottom();
+        renderReactions(row, d.reactions);
+        if (stick) scrollToBottom(false);
+      });
+
+      function closeReactions() {
+        reactPop.classList.remove('open');
+        reactPop.setAttribute('aria-hidden', 'true');
+        if (reactTarget) reactTarget.classList.remove('react-target');
+        reactTarget = null;
+      }
+
+      function openReactions(row) {
+        if (!socket.connected) return;
+        setMenu(false);
+        setOnlinePop(false);
+        setActionMenu(false);
+        closeReactions();
+        reactTarget = row;
+        reactOpenedAt = Date.now();
+
+        const mine = me && row._reactions ? Object.keys(row._reactions).find((k) => row._reactions[k].indexOf(me.id) !== -1) : null;
+        reactPop.querySelectorAll('button').forEach((b) => b.classList.toggle('mine', b.dataset.emoji === mine));
+        row.classList.add('react-target');
+
+        // Sit just above the bubble (or below it when it is near the top), kept inside the app
+        const app = reactPop.parentElement.getBoundingClientRect();
+        const bub = row.querySelector('.bubble').getBoundingClientRect();
+        const headBottom = document.querySelector('header').offsetHeight;
+        const w = reactPop.offsetWidth;
+        const h = reactPop.offsetHeight;
+        let left = row.classList.contains('own') ? bub.right - app.left - w : bub.left - app.left;
+        left = Math.max(8, Math.min(left, app.width - w - 8));
+        let top = bub.top - app.top - h - 8;
+        let below = false;
+        if (top < headBottom + 4) { top = bub.bottom - app.top + 8; below = true; }
+        top = Math.max(8, Math.min(top, app.height - h - 8));
+        reactPop.style.left = left + 'px';
+        reactPop.style.top = top + 'px';
+        reactPop.style.transformOrigin = (bub.left + bub.width / 2 - app.left - left) + 'px ' + (below ? '0%' : '100%');
+
+        reactPop.classList.add('open');
+        reactPop.setAttribute('aria-hidden', 'false');
+        if (navigator.vibrate) navigator.vibrate(10);
+      }
+
+      document.addEventListener('pointerdown', (e) => {
+        if (reactPop.classList.contains('open') && !reactPop.contains(e.target)) closeReactions();
+      });
+      messagesEl.addEventListener('scroll', closeReactions, { passive: true });
+      window.addEventListener('resize', closeReactions);
+
+      // Hold a message (finger or mouse) to open the picker
+      (function holdToReact() {
+        const HOLD_MS = 380;
+        const SLOP = 8; // how far the finger may wander before it counts as a swipe or scroll
+        let row = null;
+        let timer = 0;
+        let sx = 0;
+        let sy = 0;
+        let pid = null;
+        let lastFire = 0;
+
+        function clear() {
+          clearTimeout(timer);
+          timer = 0;
+          if (row) row.classList.remove('holding');
+          row = null;
+          pid = null;
+        }
+
+        messagesEl.addEventListener('pointerdown', (e) => {
+          if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+          if (e.target.closest('.quote, .reacts, button, a')) return;
+          const bubble = e.target.closest('.bubble');
+          if (!bubble) return;
+          const r = bubble.closest('.row');
+          if (!r || !r.dataset.mid || r.classList.contains('vanishing')) return;
+
+          clear();
+          row = r;
+          pid = e.pointerId;
+          sx = e.clientX;
+          sy = e.clientY;
+          r.classList.add('holding');
+          timer = setTimeout(() => {
+            const target = row;
+            timer = 0;
+            clear();
+            lastFire = Date.now();
+            if (window.getSelection) window.getSelection().removeAllRanges();
+            if (target) openReactions(target);
+          }, HOLD_MS);
+        });
+
+        messagesEl.addEventListener('pointermove', (e) => {
+          if (!timer || e.pointerId !== pid) return;
+          if (Math.hypot(e.clientX - sx, e.clientY - sy) > SLOP) clear();
+        });
+        messagesEl.addEventListener('pointerup', clear);
+        messagesEl.addEventListener('pointercancel', clear);
+
+        // A long press must not also start text selection or the browser's own menu
+        document.addEventListener('selectstart', (e) => {
+          if (Date.now() - lastFire < 1200) e.preventDefault();
+        });
+        messagesEl.addEventListener('contextmenu', (e) => {
+          if ((timer || Date.now() - lastFire < 1500) && e.target.closest('.bubble')) e.preventDefault();
+        });
+      })();
+
+      /* ================================================================ */
+      /* Background: bubbles rising from the send button                  */
+      /* ================================================================ */
+
+      (function bubbles() {
+        const bg = document.querySelector('.chat-bg');
+        if (!bg) return;
+        let seed = 7; // fixed seed: the same calm pattern every visit
+        const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+        for (let i = 0; i < 14; i++) {
+          const b = document.createElement('i');
+          b.style.cssText =
+            '--s:' + (10 + rnd() * 34).toFixed(1) + 'px;' +          // size
+            '--k:' + (-0.9 + rnd() * 0.95).toFixed(2) + ';' +        // how far left it drifts (share of the width)
+            '--sway:' + ((rnd() - 0.5) * 60).toFixed(0) + 'px;' +    // gentle wobble on the way up
+            '--ox:' + ((rnd() - 0.5) * 14).toFixed(1) + 'px;' +      // tiny offset at the button
+            '--dur:' + (11 + rnd() * 9).toFixed(1) + 's;' +
+            '--delay:-' + (rnd() * 20).toFixed(1) + 's;' +
+            '--o:' + (0.5 + rnd() * 0.5).toFixed(2);
+          bg.appendChild(b);
+        }
+      })();
 
       /* ================================================================ */
       /* Start up                                                         */
