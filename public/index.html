@@ -1362,6 +1362,28 @@
     }
     .person.sel .p-tick { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 
+    /* ================= invite link ================= */
+    #new-modal .sheet { max-height: calc(100% - 16px); overflow-y: auto; }
+    .invite { margin: 0 0 12px; padding: 12px; border-radius: 16px; background: var(--field); }
+    .invite-msg { margin: 0 0 8px; font-size: 0.82rem; line-height: 1.4; }
+    .invite-row { display: flex; align-items: center; gap: 8px; }
+    .invite-link {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--accent-hover);
+      font-size: 0.78rem;
+      font-weight: 600;
+      -webkit-user-select: all;
+      user-select: all;
+    }
+    .invite .ghost { flex: 0 0 auto; padding: 8px 16px; font-size: 0.82rem; background: var(--bubble); }
+
     /* ================= offline look ================= */
     .dot.off { background: var(--muted); }
     .dot.off::after { display: none; }
@@ -1623,6 +1645,13 @@
           <div class="picked" id="picked" hidden></div>
           <input id="user-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Exact username" aria-label="Exact username" />
           <ul class="people" id="people"></ul>
+          <div class="invite" id="invite" hidden>
+            <p class="invite-msg" id="invite-msg"></p>
+            <div class="invite-row">
+              <span class="invite-link" id="invite-link"></span>
+              <button type="button" class="ghost" id="invite-copy">Copy</button>
+            </div>
+          </div>
           <div class="form-error" id="new-error" role="alert"></div>
           <div class="sheet-actions">
             <button type="button" class="ghost" id="new-cancel">Cancel</button>
@@ -1727,6 +1756,10 @@
       const newError = $('new-error');
       const newCancel = $('new-cancel');
       const newCreate = $('new-create');
+      const inviteBox = $('invite');
+      const inviteMsg = $('invite-msg');
+      const inviteLinkEl = $('invite-link');
+      const inviteCopy = $('invite-copy');
 
       /* ---------- state ---------- */
       let me = null; // the logged-in user
@@ -1949,6 +1982,7 @@
 
         focusOnConnect = true;
         if (!socket.connected) socket.connect();
+        consumePendingAdd();
       }
 
       logoutBtn.addEventListener('click', async () => {
@@ -3569,15 +3603,73 @@
       }
       newTabButtons.forEach((t) => t.addEventListener('click', () => setNewMode(t.dataset.mode)));
 
-      function openNew() {
+      function openNew(prefill) {
         setDrawer(false);
-        userSearch.value = '';
+        userSearch.value = prefill || '';
         groupName.value = '';
         newError.classList.remove('show');
         setNewMode('dm');
+        renderInvite();
         newModal.classList.add('open');
         newModal.setAttribute('aria-hidden', 'false');
-        setTimeout(() => userSearch.focus(), 350);
+        if (!prefill) setTimeout(() => userSearch.focus(), 350);
+      }
+
+      /* ---------- invite link: share it so a friend lands here with your username typed in ---------- */
+      const INVITE_TEXT = 'Hey! Bored? Come join me on Atti chat\u2014we can play a quick game or just attii panlaam. Click here to add me:';
+      const ADD_KEY = 'atti-add';
+
+      function inviteLink() {
+        return window.location.origin + '/?add=' + encodeURIComponent(me.username);
+      }
+
+      // Only accounts with a username can be found, so only they get an invite
+      function renderInvite() {
+        const ok = Boolean(me && me.username);
+        inviteBox.hidden = !ok;
+        if (!ok) return;
+        inviteMsg.textContent = INVITE_TEXT;
+        inviteLinkEl.textContent = inviteLink();
+        inviteCopy.textContent = 'Copy';
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (e) {
+          // Older browsers / non-secure pages: fall back to a temporary text box
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          let ok = false;
+          try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+          ta.remove();
+          return ok;
+        }
+      }
+
+      let copyTimer = null;
+      inviteCopy.addEventListener('click', async () => {
+        if (!me || !me.username) return;
+        const ok = await copyText(INVITE_TEXT + ' ' + inviteLink());
+        inviteCopy.textContent = ok ? 'Copied!' : 'Press and hold the link to copy';
+        clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => { inviteCopy.textContent = 'Copy'; }, 2000);
+      });
+
+      // After logging in, open the add-friends page for whoever's link was clicked
+      function consumePendingAdd() {
+        let name = null;
+        try {
+          name = sessionStorage.getItem(ADD_KEY);
+          sessionStorage.removeItem(ADD_KEY);
+        } catch (e) { /* storage blocked */ }
+        if (name && /^[a-z0-9_]{3,20}$/.test(name)) openNew(name);
       }
       function closeNew() {
         newModal.classList.remove('open');
@@ -3816,9 +3908,16 @@
           google_failed: 'Google sign-in did not complete. Please try again.',
           google_unavailable: 'Google sign-in is not set up on this server yet.'
         };
-        const errorCode = new URLSearchParams(window.location.search).get('error');
+        const params = new URLSearchParams(window.location.search);
+        const errorCode = params.get('error');
         const pendingError = errorCode ? errors[errorCode] || 'Sign-in failed. Please try again.' : '';
-        if (errorCode) window.history.replaceState({}, '', '/');
+
+        // An invite link (/?add=username): remember it so it survives logging in or signing up, even via Google
+        const addName = (params.get('add') || '').trim().toLowerCase().replace(/^@/, '');
+        if (/^[a-z0-9_]{3,20}$/.test(addName)) {
+          try { sessionStorage.setItem(ADD_KEY, addName); } catch (e) { /* storage blocked */ }
+        }
+        if (errorCode || params.has('add')) window.history.replaceState({}, '', '/');
 
         const { ok, data } = await request('GET', '/api/check-auth');
 
