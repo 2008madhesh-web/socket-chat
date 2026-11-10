@@ -29,6 +29,8 @@ const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 
 const User = require('./models/User');
+const Conversation = require('./models/Conversation');
+const Message = require('./models/Message');
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                       */
@@ -365,6 +367,41 @@ app.get(
   (req, res) => res.redirect('/')
 );
 
+// Find people to start a chat with (used by the "New chat" sheet)
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many searches. Please wait a moment.' }
+});
+
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+app.get('/api/users/search', searchLimiter, async (req, res, next) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: 'Please log in first.' });
+
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 30) : '';
+    const filter = { _id: { $ne: req.user._id } };
+    if (q) {
+      const re = new RegExp(escapeRegex(q), 'i');
+      filter.$or = [{ displayName: re }, { username: re }];
+    }
+
+    const users = await User.find(filter)
+      .select('displayName username avatar')
+      .sort(q ? { displayName: 1 } : { createdAt: -1 })
+      .limit(12);
+
+    res.json({ users: users.map(serializeUser) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Catch-all error handler (keeps stack traces away from users)
 app.use((err, req, res, next) => {
   console.error(err);
@@ -411,6 +448,52 @@ const history = []; // last MAX_HISTORY messages (in memory)
 const presence = new Map(); // userId -> { name, avatar, color, connections }
 let nextMessageId = 1;
 
+/* ------------------------------------------------------------------ */
+/* Reactions + small shared helpers                                    */
+/* ------------------------------------------------------------------ */
+
+// The reactions people can pick. The browser shows the same six.
+const REACTIONS = ['\u2764\uFE0F', '\uD83D\uDE02', '\uD83D\uDC4D', '\uD83D\uDE2E', '\uD83D\uDE22', '\uD83D\uDD25'];
+const MAX_GROUP_NAME = 40;
+const MAX_GROUP_MEMBERS = 50;
+const OBJECT_ID_RE = /^[a-f\d]{24}$/i;
+
+const isId = (value) => typeof value === 'string' && OBJECT_ID_RE.test(value);
+
+// [{ user, emoji }] -> { emoji: [userId, ...] }
+function publicReactions(list) {
+  const out = {};
+  for (const r of list || []) {
+    (out[r.emoji] = out[r.emoji] || []).push(String(r.user));
+  }
+  return out;
+}
+
+// One reaction per person: the same emoji again removes it, a different one replaces it
+function toggleReaction(list, userId, emoji) {
+  const plain = (list || []).map((r) => ({ user: String(r.user), emoji: r.emoji }));
+  const had = plain.find((r) => r.user === userId);
+  const next = plain.filter((r) => r.user !== userId);
+  if (!had || had.emoji !== emoji) next.push({ user: userId, emoji });
+  return next;
+}
+
+// Allows `count` actions per `windowMs`; one limiter per connection
+function makeLimiter(count, windowMs) {
+  let times = [];
+  return () => {
+    const now = Date.now();
+    times = times.filter((t) => now - t < windowMs);
+    if (times.length >= count) return false;
+    times.push(now);
+    return true;
+  };
+}
+
+function publicMessage(m) {
+  return { ...m, reactions: publicReactions(m.reactions) };
+}
+
 function broadcastOnline() {
   io.emit('online', {
     count: presence.size,
@@ -446,7 +529,14 @@ const C4_COLS = 7;
 
 // Adds the seconds left, so each browser can run its own countdown without trusting its clock
 function withTtl(m) {
-  return m.vanishAt ? { ...m, ttl: Math.max(0, m.vanishAt - Date.now()) } : m;
+  const out = m.reactions ? publicMessage(m) : m;
+  return out.vanishAt ? { ...out, ttl: Math.max(0, out.vanishAt - Date.now()) } : out;
+}
+
+// The public room's history and running games, sent on connect and when switching back to the room
+function sendMain(socket) {
+  socket.emit('games', Array.from(games.values()).map(publicGame));
+  socket.emit('history', history.map(withTtl));
 }
 
 function scheduleVanish(msg) {
@@ -765,6 +855,267 @@ function registerExtraHandlers(socket, userId, name) {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* Direct messages, groups and reactions                               */
+/* ------------------------------------------------------------------ */
+
+function emitToMembers(memberIds, event, payload) {
+  if (!memberIds.length) return;
+  io.to(memberIds.map((id) => `user:${id}`)).emit(event, payload);
+}
+
+// What the browser sees of a conversation (members must be populated)
+function serializeConvo(c) {
+  const last = c.lastMessage && c.lastMessage.time ? c.lastMessage : null;
+  return {
+    id: c.id,
+    type: c.type,
+    name: c.name || '',
+    color: colorFor(c.id),
+    members: (c.members || []).map(serializeUser),
+    lastMessage: last
+      ? { text: last.text || '', userId: String(last.sender), time: last.time.getTime() }
+      : null,
+    createdAt: c.createdAt.getTime()
+  };
+}
+
+async function listConversations(userId) {
+  const docs = await Conversation.find({ members: userId })
+    .populate('members', 'displayName username avatar')
+    .sort({ updatedAt: -1 })
+    .limit(200);
+  return docs.map(serializeConvo);
+}
+
+// sender: { id, displayName, avatar }
+function publicConvoMessage(m, sender) {
+  const msg = {
+    id: String(m._id),
+    convo: String(m.conversation),
+    userId: sender ? sender.id : String(m.sender),
+    name: sender ? sender.displayName : 'Deleted user',
+    avatar: sender ? sender.avatar || '' : '',
+    color: colorFor(sender ? sender.id : String(m.sender)),
+    text: m.text,
+    time: m.createdAt.getTime(),
+    ttl: 0,
+    reactions: publicReactions(m.reactions)
+  };
+  if (m.reply && m.reply.id) {
+    msg.reply = { id: m.reply.id, userId: m.reply.userId, name: m.reply.name, text: m.reply.text };
+  }
+  return msg;
+}
+
+function registerConversationHandlers(socket, user, allowSend) {
+  const userId = user.id;
+  const fail = (message) => socket.emit('convo-error', { message });
+  const allowReact = makeLimiter(12, 3000);
+  const allowCreate = makeLimiter(5, 10000);
+  const memberCache = new Map(); // conversationId -> [memberId, ...] (only conversations this user belongs to)
+
+  // Returns the member ids if this user belongs to the conversation, otherwise null
+  async function memberIdsOf(convoId) {
+    if (memberCache.has(convoId)) return memberCache.get(convoId);
+    const c = await Conversation.findOne({ _id: convoId, members: userId }).select('members').lean();
+    if (!c) return null;
+    const ids = c.members.map(String);
+    memberCache.set(convoId, ids);
+    return ids;
+  }
+
+  // Tell every member about a new conversation, then open it for whoever started it
+  async function announce(convo, toIds) {
+    await convo.populate('members', 'displayName username avatar');
+    memberCache.set(convo.id, convo.members.map((m) => m.id));
+    emitToMembers(toIds, 'convo:new', serializeConvo(convo));
+    socket.emit('convo:started', { id: convo.id });
+  }
+
+  socket.on('convo:list', async () => {
+    try {
+      socket.emit('convo:list', await listConversations(userId));
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  // Switch to a conversation: 'main' is the public room, anything else is a DM or group
+  socket.on('convo:open', async (id) => {
+    try {
+      if (id === 'main') return sendMain(socket);
+      if (!isId(id)) return;
+
+      if (!(await memberIdsOf(id))) return fail('You are not part of that chat.');
+
+      const docs = await Message.find({ conversation: id })
+        .sort({ createdAt: -1 })
+        .limit(MAX_HISTORY)
+        .populate('sender', 'displayName avatar')
+        .lean();
+
+      const messages = docs.reverse().map((m) =>
+        publicConvoMessage(
+          m,
+          m.sender && m.sender._id
+            ? { id: String(m.sender._id), displayName: m.sender.displayName, avatar: m.sender.avatar }
+            : null
+        )
+      );
+      socket.emit('convo:history', { id, messages });
+    } catch (err) {
+      console.error(err);
+      fail('Could not open that chat.');
+    }
+  });
+
+  socket.on('dm:start', async (otherId) => {
+    try {
+      if (!isId(otherId) || otherId === userId) return;
+      if (!allowCreate()) return fail('Slow down a little.');
+      if (!(await User.exists({ _id: otherId }))) return fail('That person could not be found.');
+
+      const dmKey = Conversation.dmKeyFor(userId, otherId);
+      let convo = await Conversation.findOne({ dmKey });
+      let created = false;
+
+      if (!convo) {
+        try {
+          convo = await Conversation.create({ type: 'dm', members: [userId, otherId], createdBy: userId, dmKey });
+          created = true;
+        } catch (err) {
+          if (!err || err.code !== 11000) throw err;
+          convo = await Conversation.findOne({ dmKey }); // both people started it at the same moment
+        }
+      }
+
+      // A brand new DM is announced to both people; an existing one only needs to open for this user
+      await announce(convo, created ? [userId, otherId] : [userId]);
+    } catch (err) {
+      console.error(err);
+      fail('Could not start that chat.');
+    }
+  });
+
+  socket.on('group:create', async (data) => {
+    try {
+      if (!data || typeof data !== 'object') return;
+      if (!allowCreate()) return fail('Slow down a little.');
+
+      const name = typeof data.name === 'string' ? data.name.replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME) : '';
+      if (!name) return fail('Give your group a name.');
+
+      const others = Array.isArray(data.members)
+        ? Array.from(new Set(data.members.filter(isId))).filter((id) => id !== userId)
+        : [];
+      if (others.length < 1) return fail('Pick at least one person.');
+      if (others.length + 1 > MAX_GROUP_MEMBERS) return fail(`A group can have up to ${MAX_GROUP_MEMBERS} people.`);
+
+      if ((await User.countDocuments({ _id: { $in: others } })) !== others.length) {
+        return fail('Some of those people could not be found.');
+      }
+
+      const members = [userId, ...others];
+      const convo = await Conversation.create({ type: 'group', name, members, createdBy: userId });
+      await announce(convo, members);
+    } catch (err) {
+      console.error(err);
+      fail('Could not create that group.');
+    }
+  });
+
+  socket.on('convo:message', async (payload) => {
+    try {
+      if (!payload || typeof payload !== 'object' || !isId(payload.id)) return;
+
+      const text = typeof payload.text === 'string' ? payload.text.trim().slice(0, MAX_MESSAGE_LENGTH) : '';
+      if (!text) return;
+
+      if (!allowSend()) {
+        socket.emit('rate-limited');
+        return;
+      }
+
+      const members = await memberIdsOf(payload.id);
+      if (!members) return fail('You are not part of that chat.');
+
+      // Reply: the server looks up the original itself, so a client cannot fake what someone said
+      let reply;
+      if (isId(payload.replyTo)) {
+        const orig = await Message.findOne({ _id: payload.replyTo, conversation: payload.id })
+          .populate('sender', 'displayName')
+          .lean();
+        if (orig) {
+          reply = {
+            id: String(orig._id),
+            userId: String(orig.sender && orig.sender._id ? orig.sender._id : orig.sender),
+            name: orig.sender && orig.sender.displayName ? orig.sender.displayName : 'Deleted user',
+            text: orig.text.slice(0, 100)
+          };
+        }
+      }
+
+      const doc = await Message.create({ conversation: payload.id, sender: userId, text, reply });
+      await Conversation.updateOne(
+        { _id: payload.id },
+        { $set: { lastMessage: { text: text.slice(0, 100), sender: userId, time: doc.createdAt } } }
+      );
+
+      const avatar = socket.data.avatar !== undefined ? socket.data.avatar : user.avatar;
+      const msg = publicConvoMessage(doc, { id: userId, displayName: user.displayName, avatar });
+      emitToMembers(members, 'convo:message', msg);
+      io.to(members.map((id) => `user:${id}`))
+        .except(`user:${userId}`)
+        .emit('convo:typing', { convo: payload.id, id: userId, name: user.displayName, isTyping: false });
+    } catch (err) {
+      console.error(err);
+      fail('Could not send that message.');
+    }
+  });
+
+  socket.on('convo:typing', (data) => {
+    if (!data || typeof data !== 'object' || !isId(data.id)) return;
+    const members = memberCache.get(data.id); // only conversations opened on this connection
+    if (!members) return;
+    io.to(members.map((id) => `user:${id}`))
+      .except(`user:${userId}`)
+      .emit('convo:typing', { convo: data.id, id: userId, name: user.displayName, isTyping: Boolean(data.isTyping) });
+  });
+
+  // Add, change or remove your reaction on a message (public room or a DM / group)
+  socket.on('react', async (data) => {
+    try {
+      if (!data || typeof data !== 'object' || !REACTIONS.includes(data.emoji)) return;
+      if (!allowReact()) return;
+
+      if (data.convo === 'main') {
+        const m = history.find((x) => x.id !== undefined && x.id === data.id);
+        if (!m) return;
+        m.reactions = toggleReaction(m.reactions, userId, data.emoji);
+        io.emit('reaction-update', { convo: 'main', id: m.id, reactions: publicReactions(m.reactions) });
+        return;
+      }
+
+      if (!isId(data.convo) || !isId(data.id)) return;
+      const members = await memberIdsOf(data.convo);
+      if (!members) return;
+
+      const doc = await Message.findOne({ _id: data.id, conversation: data.convo });
+      if (!doc) return;
+      doc.reactions = toggleReaction(doc.reactions, userId, data.emoji);
+      await doc.save();
+      emitToMembers(members, 'reaction-update', {
+        convo: data.convo,
+        id: data.id,
+        reactions: publicReactions(doc.reactions)
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  });
+}
+
 io.on('connection', (socket) => {
   const user = socket.request.user; // set by Passport during the handshake
   const userId = user.id;
@@ -775,9 +1126,15 @@ io.on('connection', (socket) => {
   // Every tab of the same user joins one private room (used for logout and typing)
   socket.join(`user:${userId}`);
 
-  socket.emit('games', Array.from(games.values()).map(publicGame));
-  socket.emit('history', history.map(withTtl));
+  sendMain(socket);
   registerExtraHandlers(socket, userId, name);
+
+  // One limiter for the public room and for DMs / groups
+  const allowSend = makeLimiter(RATE_LIMIT_COUNT, RATE_LIMIT_WINDOW_MS);
+  registerConversationHandlers(socket, user, allowSend);
+  listConversations(userId)
+    .then((list) => socket.emit('convo:list', list))
+    .catch((err) => console.error(err));
 
   // Count tabs so a user with two tabs open is shown only once
   const existing = presence.get(userId);
@@ -789,8 +1146,6 @@ io.on('connection', (socket) => {
   }
   broadcastOnline();
 
-  let recentTimes = [];
-
   socket.on('chat-message', (payload) => {
     const isObject = payload !== null && typeof payload === 'object';
     const text = typeof payload === 'string' ? payload : isObject ? payload.text : null;
@@ -799,14 +1154,12 @@ io.on('connection', (socket) => {
     const message = text.trim().slice(0, MAX_MESSAGE_LENGTH);
     if (!message) return;
 
-    // Simple per-connection rate limit
-    const now = Date.now();
-    recentTimes = recentTimes.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-    if (recentTimes.length >= RATE_LIMIT_COUNT) {
+    // Simple per-connection rate limit (shared with DMs and groups)
+    if (!allowSend()) {
       socket.emit('rate-limited');
       return;
     }
-    recentTimes.push(now);
+    const now = Date.now();
 
     // Reply: the server looks up the original itself, so a client cannot fake what someone said.
     // Disappearing originals are quoted without their text.
@@ -832,14 +1185,15 @@ io.on('connection', (socket) => {
       text: message,
       time: now,
       vanishAt: disappearUsers.has(userId) ? now + VANISH_MS : null,
-      ttl: disappearUsers.has(userId) ? VANISH_MS : 0
+      ttl: disappearUsers.has(userId) ? VANISH_MS : 0,
+      reactions: []
     };
     if (reply) msg.reply = reply;
 
     history.push(msg);
     if (history.length > MAX_HISTORY) history.shift();
 
-    io.emit('chat-message', msg);
+    io.emit('chat-message', publicMessage(msg));
     if (msg.vanishAt) scheduleVanish(msg);
     socket.broadcast.except(`user:${userId}`).emit('typing', { id: userId, name, isTyping: false });
   });
