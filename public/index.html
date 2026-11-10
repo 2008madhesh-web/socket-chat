@@ -1413,6 +1413,7 @@
     #home-view.in-app .hv-more { grid-template-columns: minmax(0, 1fr); }
     #convo-btn, #home-btn { flex: 0 0 auto; }
     #home-btn.on { color: var(--accent); }
+    .app.home-open .pill { display: none; }
     .brand-text h2 { white-space: nowrap; }
     /* the extra Home button needs the room on small phones */
     @media (max-width: 420px) {
@@ -2216,6 +2217,7 @@
       function setHome(open) {
         homeView.classList.toggle('hidden', !open);
         homeBtn.classList.toggle('on', open);
+        appEl.classList.toggle('home-open', open);
         homeBtn.setAttribute('aria-pressed', String(open));
       }
 
@@ -2235,13 +2237,14 @@
         setDrawer(false);
         setOnlinePop(false);
         setActionMenu(false);
+        closeChat();
         updateHomeCta();
         homeView.scrollTop = 0;
         setHome(true);
       }
 
       function leaveHome(mode) {
-        if (me) { setHome(false); return; }
+        if (me) { setDrawer(true); return; }
         showAuth();
         setMode(mode);
       }
@@ -3626,6 +3629,28 @@
       newChatBtn.addEventListener('click', () => openNew());
 
       /* ---------- switching chats ---------- */
+      // Back to the home page: the open chat is closed
+      function closeChat() {
+        if (!activeConvo) return;
+        stopTyping();
+        activeConvo = null;
+        typingUsers.clear();
+        renderTyping();
+        cancelReply();
+        closeReactions();
+        messagesEl.innerHTML = '';
+        lastSender = null;
+        lastTime = 0;
+        gameCards.clear();
+        jumpBtn.classList.remove('show');
+        if (!convos.size) showNoChat();
+        renderHeader();
+        refreshComposerLook();
+        renderUnreadFlag();
+        setComposerEnabled(false);
+        renderStatus();
+      }
+
       function openConvo(id) {
         setHome(false);
         setDrawer(false);
@@ -3668,12 +3693,8 @@
           pendingOpen = null;
           openConvo(id);
         }
-        // First load: jump into the most recent chat, or invite the user to start one
-        if (!activeConvo) {
-          const first = Array.from(convos.values()).sort((a, b) => convoStamp(b) - convoStamp(a))[0];
-          if (first) openConvo(first.id);
-          else showNoChat();
-        }
+        // The app opens on the home page with no chat open; a chat opens only when the user picks one
+        if (!activeConvo && convos.size === 0) showNoChat();
         renderStatus();
       });
 
@@ -3683,8 +3704,7 @@
           c.lastMessage = old.lastMessage;
         }
         convos.set(c.id, c);
-        if (!activeConvo) openConvo(c.id);
-        else refreshDrawer();
+        refreshDrawer();
       });
 
       // The server created (or found) the chat we asked for: open it
