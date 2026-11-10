@@ -1393,11 +1393,31 @@
     /* Home page                                                        */
     /* ================================================================ */
     #home-view {
+      position: fixed;
+      inset: 0;
       z-index: 12;
       overflow-x: hidden;
       overflow-y: auto;
-      background: var(--bg);
+      background: var(--panel);
+      transition: opacity 0.5s var(--ease), visibility 0.5s;
       --display: "Bricolage Grotesque", var(--font);
+    }
+    #home-view.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    /* when logged in, the home page lives inside the app, under the top bar, which stays put */
+    #home-view.in-app { position: absolute; inset: var(--hdr-h, 64px) 0 0 0; z-index: 5; }
+    #home-view.in-app .hv-top { display: none; }
+    #home-view.in-app .hv-wrap { padding-top: 8px; }
+    #home-view.in-app .hv-hero { grid-template-columns: minmax(0, 1fr); padding-top: 24px; }
+    #home-view.in-app .hv-word { font-size: clamp(3.2rem, 14vw, 6.2rem); }
+    #home-view.in-app .hv-chat { justify-self: start; max-width: 380px; }
+    #home-view.in-app .hv-more { grid-template-columns: minmax(0, 1fr); }
+    #convo-btn, #home-btn { flex: 0 0 auto; }
+    #home-btn.on { color: var(--accent); }
+    .brand-text h2 { white-space: nowrap; }
+    /* the extra Home button needs the room on small phones */
+    @media (max-width: 420px) {
+      header .brand .logo { display: none; }
+      header .brand-text .credit { display: none; }
     }
     .hv-wrap {
       min-height: 100%;
@@ -1587,7 +1607,7 @@
   </div>
 
   <!-- ================= HOME PAGE ================= -->
-  <main id="home-view" class="view">
+  <main id="home-view">
     <div class="hv-wrap">
       <nav class="hv-top" aria-label="Home">
         <div class="hv-brand">
@@ -1719,16 +1739,13 @@
             <span id="me-avatar"></span>
             <span class="me-name" id="me-name"></span>
           </div>
+          <button class="icon-btn" id="home-btn" type="button" aria-label="Home" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></button>
           <div class="menu-wrap">
             <button class="icon-btn" id="menu-btn" type="button" aria-label="Settings" title="Settings" aria-haspopup="menu" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
             <div class="menu" id="menu" role="menu" aria-hidden="true">
               <div class="menu-user"><span id="menu-avatar"></span><span class="menu-user-name" id="menu-name"></span></div>
-              <button class="menu-item" id="home-btn" type="button" role="menuitem">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
-                Home
-              </button>
               <button class="menu-item" id="dp-btn" type="button" role="menuitem">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
                 Change DP
@@ -1878,7 +1895,8 @@
       const homeLogin = $('home-login');
       const homeBtn = $('home-btn');
       const authHome = $('auth-home');
-      let pendingUser = null; // already logged in, waiting for the Home page button press
+      const appEl = document.querySelector('#chat-view .app');
+      const topBar = document.querySelector('#chat-view header');
       const authView = $('auth-view');
       const chatView = $('chat-view');
 
@@ -2150,8 +2168,8 @@
         loggingOut = false;
         resetChatState();
         setMode('login');
-        pendingUser = null;
-        homeView.classList.add('hidden');
+        dockHome(false);
+        setHome(false);
         authView.classList.remove('hidden');
         chatView.classList.add('hidden');
         if (message) showError(message);
@@ -2174,8 +2192,8 @@
         setActionMenu(false);
         setDisappear(readVanishPref(user.id), false);
 
-        pendingUser = null;
-        homeView.classList.add('hidden');
+        dockHome(true);
+        setHome(false);
         authView.classList.add('hidden');
         chatView.classList.remove('hidden');
 
@@ -2185,23 +2203,45 @@
       }
 
       /* ---------- home page ---------- */
+      // Logged out: the home page covers the whole screen. Logged in: it sits inside the app, below the top bar.
+      function dockHome(inApp) {
+        if (inApp) {
+          if (homeView.parentNode !== appEl) appEl.insertBefore(homeView, topBar.nextSibling);
+        } else if (homeView.parentNode !== document.body) {
+          document.body.insertBefore(homeView, authView);
+        }
+        homeView.classList.toggle('in-app', inApp);
+      }
+
+      function setHome(open) {
+        homeView.classList.toggle('hidden', !open);
+        homeBtn.classList.toggle('on', open);
+        homeBtn.setAttribute('aria-pressed', String(open));
+      }
+
+      // keep the home page exactly below the top bar, whatever its height
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => appEl.style.setProperty('--hdr-h', topBar.offsetHeight + 'px')).observe(topBar);
+      }
+
       function updateHomeCta() {
-        const signedIn = Boolean(me || pendingUser);
-        homeCta.textContent = signedIn ? 'Open your chats' : 'Start chatting';
-        homeLogin.hidden = signedIn;
+        homeCta.textContent = me ? 'Open your chats' : 'Start chatting';
+        homeLogin.hidden = Boolean(me);
       }
 
       function showHome() {
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
         setMenu(false);
+        setDrawer(false);
+        setOnlinePop(false);
+        setActionMenu(false);
         updateHomeCta();
         homeView.scrollTop = 0;
-        homeView.classList.remove('hidden');
+        setHome(true);
       }
 
       function leaveHome(mode) {
-        if (me) { homeView.classList.add('hidden'); return; }   // came here from the chat: just go back
-        if (pendingUser) { enterChat(pendingUser); return; }     // logged in already: open the chats
+        if (me) { setHome(false); return; }
         showAuth();
         setMode(mode);
       }
@@ -2225,7 +2265,6 @@
         if (!res.ok) return; // network problem: keep trying to reconnect
         if (!res.data.authenticated) {
           socket.disconnect();
-          if (!homeView.classList.contains('hidden')) { me = null; pendingUser = null; updateHomeCta(); return; }
           showAuth('Your session has expired. Please log in again.');
         } else if (!socket.connected) {
           socket.connect();
@@ -3588,6 +3627,7 @@
 
       /* ---------- switching chats ---------- */
       function openConvo(id) {
+        setHome(false);
         setDrawer(false);
         if (id === activeConvo) return;
         if (!convos.has(id)) return;
@@ -4360,7 +4400,8 @@
             showAuth(pendingError || (ok ? '' : data.error));
           }
         } else {
-          pendingUser = ok && data.authenticated ? data.user : null;
+          if (ok && data.authenticated) enterChat(data.user); // connects behind the home page, top bar stays visible
+          setHome(true);
           updateHomeCta();
           homeView.classList.add('play');
         }
