@@ -1596,6 +1596,178 @@
     /* ---------- logo: textured A mark ---------- */
     .logo { background: transparent; overflow: hidden; }
     .logo > svg.mark { width: 100% !important; height: 100% !important; display: block; }
+
+    /* ================= quick games: Memory Match, Rock Paper Scissors, Reaction Duel ================= */
+    :root {
+      --p0: var(--accent); /* the challenger, the same colour as X in Tic-Tac-Toe */
+      --p1: #38bdf8; /* the opponent, the same colour as O */
+      --display: "Bricolage Grotesque", var(--font);
+    }
+
+    /* menu + card badges */
+    .action-ico.mem, .game-card[data-type="mem"] .g-badge { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+    .action-ico.rps, .game-card[data-type="rps"] .g-badge { background: linear-gradient(135deg, #06b6d4, #0e7490); }
+    .action-ico.duel, .game-card[data-type="duel"] .g-badge { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+    .action-menu { max-height: 70vh; max-height: min(70dvh, 480px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+    /* the rule line on an open challenge, so nobody accepts a game they have not played */
+    .g-rule { margin: -2px 0 12px; font-size: 0.82rem; line-height: 1.45; color: var(--muted); }
+    .g-actions[hidden], .g-status[hidden] { display: none; }
+    .g-status.late { animation: lateIn 0.3s ease-out 0.8s both; }
+    @keyframes lateIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* the score strip: challenger is rose, opponent is sky, in every game */
+    .g-player.q0 { --own: var(--p0); }
+    .g-player.q1 { --own: var(--p1); }
+    .disc.c0 { background: var(--p0); }
+    .disc.c1 { background: var(--p1); }
+    .g-pname { flex: 0 1 auto; }
+    .g-score { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; margin-left: auto; font-family: var(--display); font-size: 1.2rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+    .g-score .num { display: inline-block; min-width: 0.6em; text-align: right; }
+    .g-score .num.bump { animation: scoreBump 0.5s var(--spring); }
+    @keyframes scoreBump { 40% { transform: scale(1.55); } }
+    .pip { width: 9px; height: 9px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--muted) 55%, transparent); transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.45s var(--spring); }
+    .pip.on { background: var(--own); border-color: var(--own); transform: scale(1.2); }
+
+    /* ---------- Memory Match ---------- */
+    .board.mem { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-width: 280px; margin: 0 auto; }
+    .mm {
+      aspect-ratio: 1;
+      padding: 0;
+      overflow: visible; /* the base button rule clips, which would cut the flip */
+      border-radius: 14px;
+      background: transparent;
+      perspective: 520px;
+      transition: transform 0.25s var(--spring);
+    }
+    .mm .ripple { display: none; }
+    .mm:disabled { cursor: default; }
+    .mm:not(:disabled):hover { transform: translateY(-2px); }
+    .mm:not(:disabled):active { transform: scale(0.94); }
+    .mm-in { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 0.5s var(--ease); }
+    .mm.up .mm-in { transform: rotateY(180deg); }
+    .mm-back, .mm-face {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+    }
+    /* the card back is the app icon: the rose gradient with its dot pattern */
+    .mm-back {
+      background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.36) 1.1px, transparent 1.5px) 0 0 / 9px 9px,
+        radial-gradient(circle, rgba(255, 255, 255, 0.36) 1.1px, transparent 1.5px) 4.5px 4.5px / 9px 9px,
+        linear-gradient(145deg, #f26a97, #b52b57);
+      box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+    }
+    .mm-face { transform: rotateY(180deg); background: var(--panel); box-shadow: inset 0 0 0 1.5px var(--border); transition: background-color 0.35s ease, box-shadow 0.35s ease; }
+    .mm-face svg { width: 62%; height: 62%; overflow: visible; fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+    .mm.p0 { --own: var(--p0); }
+    .mm.p1 { --own: var(--p1); }
+    .mm.done .mm-face { background: color-mix(in srgb, var(--own) 15%, var(--panel)); box-shadow: inset 0 0 0 2.5px var(--own); }
+    .mm.miss .mm-face { box-shadow: inset 0 0 0 2.5px var(--danger-text); }
+    .mm.miss .mm-face svg { animation: mmShake 0.4s ease-in-out; }
+    .mm.pop .mm-face svg { animation: mmPop 0.55s var(--spring); }
+    @keyframes mmShake { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+    @keyframes mmPop { 40% { transform: scale(1.32) rotate(-8deg); } }
+
+    /* ---------- Rock Paper Scissors ---------- */
+    .rps-arena { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; margin: 2px 0 4px; }
+    .vs { font-family: var(--display); font-size: 0.95rem; font-weight: 800; color: var(--muted); }
+    .slot {
+      position: relative;
+      width: 100%;
+      max-width: 112px;
+      aspect-ratio: 1;
+      justify-self: center;
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: inset 0 0 0 2px var(--border);
+      transition: box-shadow 0.3s ease, background-color 0.3s ease, opacity 0.3s ease, transform 0.45s var(--spring);
+    }
+    .slot.q0 { --own: var(--p0); color: var(--p0); }
+    .slot.q1 { --own: var(--p1); color: var(--p1); }
+    .slot-in { position: absolute; inset: 0; }
+    .slot .q, .slot .g { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 0.2s ease, transform 0.4s var(--spring); }
+    .slot .q { font-family: var(--display); font-size: 2.2rem; font-weight: 800; color: var(--muted); }
+    .slot .q svg { width: 34%; height: 34%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .slot .g { opacity: 0; transform: scale(0.5); }
+    .slot .g svg { width: 62%; height: 62%; }
+    .slot.mine .q, .slot.open .q { opacity: 0; }
+    .slot.mine .g, .slot.open .g { opacity: 1; transform: none; }
+    .slot.hold .q { color: var(--own); }
+    /* the other player's pick flips in after the shake, so the shake is never skipped */
+    .slot.reveal:not(.mine) .q, .slot.reveal:not(.mine) .g { transition-delay: 0.8s; }
+    .slot.reveal { transition-delay: 0.8s; }
+    .slot.reveal .slot-in { animation: shoot 0.8s ease-in-out; }
+    .slot.win { box-shadow: inset 0 0 0 3px var(--own); background: color-mix(in srgb, var(--own) 14%, var(--panel)); transform: scale(1.06); }
+    .slot.lose { opacity: 0.4; transform: scale(0.93); }
+    @keyframes shoot {
+      0%, 100% { transform: translateY(0); }
+      16% { transform: translateY(-14px) rotate(-4deg); }
+      32% { transform: translateY(3px); }
+      48% { transform: translateY(-14px) rotate(4deg); }
+      64% { transform: translateY(3px); }
+      80% { transform: translateY(-14px); }
+    }
+    .rps-g, .rps-pick svg { fill: color-mix(in srgb, currentColor 16%, transparent); stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+    .rps-note { min-height: 1.4em; margin: 8px 0 12px; text-align: center; font-size: 0.84rem; font-weight: 600; color: var(--muted); }
+    .rps-note.late { animation: lateIn 0.3s ease-out 0.8s both; }
+    .rps-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .rps-picks[data-side="0"] { --own: var(--p0); }
+    .rps-picks[data-side="1"] { --own: var(--p1); }
+    .rps-pick {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 4px 8px;
+      border-radius: 16px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 0.76rem;
+      font-weight: 700;
+      transition: transform 0.25s var(--spring), box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+    .rps-pick svg { width: 36px; height: 36px; }
+    .rps-pick:not(:disabled):hover { transform: translateY(-2px); box-shadow: inset 0 0 0 2px var(--own); }
+    .rps-pick:not(:disabled):active { transform: scale(0.94); }
+    .rps-pick:disabled { cursor: default; opacity: 0.4; }
+    .rps-pick.on { opacity: 1; color: var(--own); box-shadow: inset 0 0 0 2px var(--own); }
+
+    /* ---------- Reaction Duel ---------- */
+    .arena {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 176px;
+      padding: 18px;
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: inset 0 0 0 2px var(--border);
+      color: var(--text);
+      text-align: center;
+      transition: background-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+    }
+    .arena .ripple { display: none; }
+    .arena:disabled { cursor: default; }
+    .arena.live { cursor: pointer; touch-action: none; } /* no scrolling while the screen is red or green */
+    .arena[data-phase="wait"] { background: #8a1c24; color: #ffffff; box-shadow: none; }
+    .arena[data-phase="go"] { background: #1fcb62; color: #052512; box-shadow: none; transition: none; } /* the signal is instant */
+    .ar-main { font-family: var(--display); font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .ar-sub { max-width: 24ch; font-size: 0.86rem; font-weight: 600; line-height: 1.35; opacity: 0.85; }
+    .arena[data-phase="go"] .ar-main { font-size: 3.6rem; }
+    .arena[data-phase="ready"] .ar-main { color: var(--muted); }
+    .arena[data-phase="reveal"][data-w="0"] .ar-main { color: var(--p0); }
+    .arena[data-phase="reveal"][data-w="1"] .ar-main { color: var(--p1); }
+    .arena[data-phase="reveal"][data-r="early"] .ar-main { color: #f59e0b; }
+    .arena[data-phase="reveal"][data-r="idle"] .ar-main { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -1655,7 +1827,7 @@
         <h2>Chat, play and sketch in one place.</h2>
         <ul class="hv-list">
           <li><strong>Direct messages and groups</strong><span>Find a friend by username, or name a group and add everyone.</span></li>
-          <li><strong>Games inside the chat</strong><span>Challenge someone to Tic-Tac-Toe or Connect Four without leaving the conversation.</span></li>
+          <li><strong>Games inside the chat</strong><span>Challenge someone to Tic-Tac-Toe, Connect Four, Memory Match, Rock Paper Scissors or a Reaction Duel without leaving the conversation.</span></li>
           <li><strong>Draw together</strong><span>Sketch on a shared canvas while you talk.</span></li>
           <li><strong>Disappearing messages</strong><span>Turn on disappear mode and messages delete themselves.</span></li>
           <li><strong>Message alerts</strong><span>Get a notification on your phone or laptop when a friend writes.</span></li>
@@ -1833,6 +2005,18 @@
           <button class="action-item" type="button" role="menuitem" data-game="c4">
             <span class="action-ico c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="3.2"/><circle cx="17" cy="7" r="3.2" fill="currentColor"/><circle cx="7" cy="17" r="3.2" fill="currentColor"/><circle cx="17" cy="17" r="3.2"/></svg></span>
             <span class="action-text"><strong>Connect Four Challenge</strong><span>Drop discs, connect four in a row</span></span>
+          </button>
+          <button class="action-item" type="button" role="menuitem" data-game="mem">
+            <span class="action-ico mem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="10" height="13" rx="2.5"/><rect x="11" y="8" width="10" height="13" rx="2.5" fill="currentColor"/></svg></span>
+            <span class="action-text"><strong>Memory Match</strong><span>Flip cards and find the pairs</span></span>
+          </button>
+          <button class="action-item" type="button" role="menuitem" data-game="rps">
+            <span class="action-ico rps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.6"/><circle cx="5.5" cy="17.5" r="2.6"/><circle cx="18.5" cy="17.5" r="2.6"/><path d="M10.7 7.9l-3.8 7.2M8.6 17.5h6.8M13.3 7.9l3.8 7.2"/></svg></span>
+            <span class="action-text"><strong>Rock Paper Scissors</strong><span>Best of three, picks revealed together</span></span>
+          </button>
+          <button class="action-item" type="button" role="menuitem" data-game="duel">
+            <span class="action-ico duel"><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></svg></span>
+            <span class="action-text"><strong>Reaction Duel</strong><span>Tap first when the screen turns green</span></span>
           </button>
           <button class="action-item" type="button" role="menuitem" data-game="draw">
             <span class="action-ico dr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/></svg></span>
@@ -2970,6 +3154,12 @@
         const nameOf = (p) => (p.id === meId ? 'You' : p.name);
         const label = GAME_LABEL[g.type];
 
+        // Memory Match, Rock Paper Scissors and Reaction Duel update in place once they start
+        if (QUICK_GAMES.has(g.type) && g.status !== 'open' && g.status !== 'cancelled') {
+          renderQuick(entry);
+          return;
+        }
+
         card.textContent = '';
         card.dataset.status = g.status;
 
@@ -2989,6 +3179,13 @@
         title.append(kicker, line);
         head.append(badge, title);
         card.appendChild(head);
+
+        // Say how the quick games work before anyone accepts
+        if (g.status === 'open' && GAME_RULE[g.type]) {
+          const rule = el('g-rule', 'p');
+          rule.textContent = GAME_RULE[g.type];
+          card.appendChild(rule);
+        }
 
         /* waiting for an opponent */
         if (g.status === 'open') {
@@ -3156,6 +3353,398 @@
       });
 
       socket.on('game-error', (d) => showToast(d.message || 'Something went wrong.'));
+
+      /* ================================================================ */
+      /* Quick games: Memory Match, Rock Paper Scissors, Reaction Duel    */
+      /* ================================================================ */
+
+      /*
+       * These three update their card in place instead of redrawing it, so a card can really
+       * flip over and the duel screen can change colour the instant the server says so.
+       * The server decides everything; this only draws the state it is sent.
+       */
+      const QUICK_GAMES = new Set(['mem', 'rps', 'duel']);
+
+      const GAME_RULE = {
+        mem: 'Flip two cards at a time. Find a pair and you go again. Most pairs wins.',
+        rps: 'Best of three rounds. You both pick in secret, then the picks are revealed together.',
+        duel: 'Wait for the screen to turn green, then tap. Tap early and the round goes to your friend. First to three wins.'
+      };
+
+      // Memory Match marks: bold round strokes, the same drawing style as the X and O
+      const MEM_NAMES = ['ring', 'triangle', 'square', 'diamond', 'plus', 'wave', 'moon', 'star'];
+      const MEM_GLYPHS = [
+        '<circle cx="20" cy="20" r="11" stroke="#38bdf8"/>',
+        '<path d="M20 9.5L31 29.5H9z" stroke="#f59e0b"/>',
+        '<rect x="10" y="10" width="20" height="20" rx="4" fill="#f26a97" stroke="#f26a97"/>',
+        '<path d="M20 8L32 20L20 32L8 20z" fill="#a78bfa" stroke="#a78bfa"/>',
+        '<path d="M20 9v22M9 20h22" stroke="#3ddc84"/>',
+        '<path d="M6 21q3.5-12 7 0t7 0 7 0 7 0" stroke="#fb923c"/>',
+        '<path d="M24 8A13 13 0 1 0 33 27A10 10 0 0 1 24 8z" fill="#2dd4bf" stroke="#2dd4bf"/>',
+        '<path d="M20 7.5l3.9 8.1 8.9 1.2-6.5 6.2 1.6 8.8L20 27.4l-7.9 4.4 1.6-8.8-6.5-6.2 8.9-1.2z" fill="#84cc16" stroke="#84cc16"/>'
+      ].map((p) => '<svg viewBox="0 0 40 40" aria-hidden="true">' + p + '</svg>');
+
+      // Rock Paper Scissors hands, in the order the server uses: 0 rock, 1 paper, 2 scissors
+      const RPS_NAMES = ['Rock', 'Paper', 'Scissors'];
+      const RPS_BEAT = ['Rock breaks scissors', 'Paper covers rock', 'Scissors cut paper']; // by the winning hand
+      const RPS_GLYPHS = [
+        '<path d="M8 31c-2-9 2-18 10-21s17-1 21 7 1 15-5 19-21 4-26-5z"/><path d="M16 21c3-4 8-6 12-4"/>',
+        '<path d="M13 8h15l8 8v24H13z"/><path d="M28 8v8h8"/><path d="M19 25h12M19 32h12"/>',
+        '<circle cx="14" cy="37" r="5"/><circle cx="34" cy="37" r="5"/><path d="M17.5 33.5L34 9M30.5 33.5L14 9"/>'
+      ].map((p) => '<svg class="rps-g" viewBox="0 0 48 48" aria-hidden="true">' + p + '</svg>');
+      const LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+      GAME_LABEL.mem = 'Memory Match';
+      GAME_LABEL.rps = 'Rock Paper Scissors';
+      GAME_LABEL.duel = 'Reaction Duel';
+      GAME_ICON.mem = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="10" height="13" rx="2.5"/><rect x="11" y="8" width="10" height="13" rx="2.5" fill="currentColor"/></svg>';
+      GAME_ICON.rps = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.6"/><circle cx="5.5" cy="17.5" r="2.6"/><circle cx="18.5" cy="17.5" r="2.6"/><path d="M10.7 7.9l-3.8 7.2M8.6 17.5h6.8M13.3 7.9l3.8 7.2"/></svg>';
+      GAME_ICON.duel = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></svg>';
+
+      function quickSend(entry, index) {
+        if (!socket.connected) return showToast('Still connecting. Try again in a moment.');
+        socket.emit('make-move', { gameId: entry.state.id, index });
+      }
+
+      // Shared ending line for all three games
+      function quickFinal(g, c) {
+        if (g.status === 'draw') return { text: "It's a tie, " + g.scores[0] + ' to ' + g.scores[1] };
+        const w = g.winner === g.challenger.id ? 0 : 1;
+        const winner = w === 0 ? g.challenger : g.opponent;
+        const you = winner.id === c.meId;
+        let text;
+        if (g.reason === 'resigned') text = (you ? 'You' : winner.name) + ' won by resignation';
+        else if (g.reason === 'left') text = (you ? 'You' : winner.name) + ' won (opponent left)';
+        else text = (you ? 'You won' : winner.name + ' won') + ' ' + g.scores[w] + ' to ' + g.scores[1 - w];
+        return { text: text + '!', cls: 'win' };
+      }
+
+      /* ---------- Memory Match ---------- */
+      function buildMem(entry) {
+        const board = el('board mem');
+        const cells = [];
+        for (let i = 0; i < 16; i++) {
+          const b = el('mm', 'button');
+          b.type = 'button';
+          const inner = el('mm-in', 'span');
+          const back = el('mm-back', 'span');
+          const face = el('mm-face', 'span');
+          inner.append(back, face);
+          b.appendChild(inner);
+          b.addEventListener('click', () => quickSend(entry, i));
+          board.appendChild(b);
+          cells.push({ b, face, sym: null, owner: null });
+        }
+
+        return {
+          el: board,
+          sync(g, c) {
+            const myTurn = g.status === 'playing' && g.turn === c.meId && !g.lock;
+            let faceUp = 0;
+            cells.forEach((cell, i) => {
+              const v = g.board[i];
+              const o = g.owners[i];
+              // A glyph is only drawn once the server has revealed that card
+              if (v !== null && cell.sym !== v) {
+                cell.face.innerHTML = MEM_GLYPHS[v];
+                cell.sym = v;
+              }
+              if (v !== null && o === null) faceUp += 1;
+              cell.b.classList.toggle('up', v !== null);
+              cell.b.classList.toggle('done', o !== null);
+              cell.b.classList.toggle('p0', o === 0);
+              cell.b.classList.toggle('p1', o === 1);
+              cell.b.classList.toggle('miss', Boolean(g.lock) && v !== null && o === null);
+              if (o !== null && cell.owner === null && !c.first) cell.b.classList.add('pop');
+              cell.owner = o;
+              cell.b.disabled = !(myTurn && v === null);
+              cell.b.setAttribute(
+                'aria-label',
+                'Card ' + (i + 1) + (v === null ? ', face down' : ', ' + MEM_NAMES[v] + (o === null ? '' : ', claimed by ' + (o === 0 ? g.challenger : g.opponent).name))
+              );
+            });
+
+            if (g.status !== 'playing') return quickFinal(g, c);
+            const turnP = g.turn === g.challenger.id ? g.challenger : g.opponent;
+            const mine = g.turn === c.meId;
+            if (g.lock) return { text: 'No match' };
+            if (g.hit === true && faceUp === 0) return { text: mine ? 'A pair! Flip again' : turnP.name + ' found a pair' };
+            if (faceUp === 1) return { text: mine ? 'Now flip a second card' : turnP.name + ' is picking' };
+            return { text: mine ? 'Your turn. Flip a card' : turnP.name + "'s turn", cls: mine ? 'you' : '' };
+          }
+        };
+      }
+
+      /* ---------- Rock Paper Scissors ---------- */
+      function buildRps(entry) {
+        const local = { mine: null }; // my own pick this round, which the server keeps secret until the reveal
+        const wrap = el('rps');
+
+        const arena = el('rps-arena');
+        const slots = [0, 1].map((i) => {
+          const slot = el('slot q' + i);
+          const inner = el('slot-in');
+          const q = el('q');
+          const gl = el('g');
+          inner.append(q, gl);
+          slot.appendChild(inner);
+          return { el: slot, q, gl, glyph: null, hold: null };
+        });
+        const vs = el('vs', 'span');
+        vs.textContent = 'vs';
+        arena.append(slots[0].el, vs, slots[1].el);
+
+        const note = el('rps-note');
+        const picks = el('rps-picks');
+        const btns = RPS_NAMES.map((name, k) => {
+          const b = el('rps-pick', 'button');
+          b.type = 'button';
+          b.innerHTML = RPS_GLYPHS[k] + '<span>' + name + '</span>';
+          b.addEventListener('click', () => {
+            if (!socket.connected) return showToast('Still connecting. Try again in a moment.');
+            local.mine = { round: entry.state.round, pick: k };
+            quickSend(entry, k);
+            renderQuick(entry); // show the pick at once; the server confirms a moment later
+          });
+          picks.appendChild(b);
+          return b;
+        });
+        wrap.append(arena, note, picks);
+
+        let wasReveal = false;
+        return {
+          el: wrap,
+          sync(g, c) {
+            const reveal = g.phase === 'reveal' && g.last ? g.last : null;
+            const mineNow = local.mine && local.mine.round === g.round ? local.mine.pick : null;
+            const iPicked = c.side >= 0 && (Boolean(g.picked[c.side]) || mineNow !== null);
+            const justRevealed = Boolean(reveal) && !wasReveal && !c.first;
+
+            slots.forEach((s, i) => {
+              const isMe = c.side === i;
+              // The reveal class goes on first, so the delay is already in effect when the pick appears
+              if (justRevealed) {
+                s.el.classList.remove('reveal');
+                void s.el.offsetWidth; // restart the shake
+                s.el.classList.add('reveal');
+              } else if (!reveal) {
+                s.el.classList.remove('reveal');
+              }
+              let glyph = null;
+              if (reveal) glyph = reveal.picks[i];
+              else if (isMe && mineNow !== null) glyph = mineNow;
+              if (glyph !== s.glyph) {
+                s.gl.innerHTML = glyph === null ? '' : RPS_GLYPHS[glyph];
+                s.glyph = glyph;
+              }
+              const hold = !reveal && (isMe ? iPicked : Boolean(g.picked[i]));
+              if (hold !== s.hold) {
+                s.q.innerHTML = hold ? LOCK_SVG : '?';
+                s.hold = hold;
+              }
+              s.el.classList.toggle('hold', hold);
+              s.el.classList.toggle('mine', isMe && glyph !== null);
+              s.el.classList.toggle('open', Boolean(reveal));
+              s.el.classList.toggle('win', Boolean(reveal) && reveal.winner === i);
+              s.el.classList.toggle('lose', Boolean(reveal) && reveal.winner !== null && reveal.winner !== i);
+            });
+            wasReveal = Boolean(reveal);
+
+            const names = [g.challenger, g.opponent];
+            if (reveal) {
+              note.textContent = reveal.winner === null ? 'Same pick' : RPS_BEAT[reveal.picks[reveal.winner]];
+              note.classList.toggle('late', slots[0].el.classList.contains('reveal'));
+            } else {
+              note.textContent = 'First to ' + g.target;
+              note.classList.remove('late');
+            }
+
+            picks.style.display = c.side >= 0 ? '' : 'none';
+            picks.dataset.side = String(c.side);
+            btns.forEach((b, k) => {
+              b.disabled = !(g.status === 'playing' && g.phase === 'pick' && !iPicked);
+              b.classList.toggle('on', mineNow === k);
+            });
+
+            const late = slots[0].el.classList.contains('reveal');
+            if (g.status !== 'playing') return Object.assign({ late }, quickFinal(g, c));
+            if (reveal) {
+              if (reveal.winner === null) return { text: 'Same pick. Go again', late };
+              const you = names[reveal.winner].id === c.meId;
+              return { text: you ? 'You win the round' : names[reveal.winner].name + ' wins the round', late };
+            }
+            if (c.side < 0) return { text: 'Both players are picking' };
+            const other = names[1 - c.side];
+            if (iPicked) return { text: 'Locked in. Waiting for ' + other.name };
+            return { text: g.picked[1 - c.side] ? 'Pick one. ' + other.name + ' is ready' : 'Pick one', cls: 'you' };
+          }
+        };
+      }
+
+      /* ---------- Reaction Duel ---------- */
+      function buildDuel(entry) {
+        const arena = el('arena', 'button');
+        arena.type = 'button';
+        const main = el('ar-main', 'span');
+        const sub = el('ar-sub', 'span');
+        arena.append(main, sub);
+
+        const local = { live: false, phase: null };
+        const tap = () => {
+          if (local.live) quickSend(entry, 0);
+        };
+        // pointerdown, not click: a click only fires when the finger lifts, which is too late for a reaction game
+        arena.addEventListener('pointerdown', (e) => {
+          if (e.button > 0) return;
+          tap();
+        });
+        arena.addEventListener('keydown', (e) => {
+          if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
+            e.preventDefault();
+            tap();
+          }
+        });
+
+        return {
+          el: arena,
+          sync(g, c) {
+            const last = g.last;
+            const names = [g.challenger, g.opponent];
+            const playing = g.status === 'playing';
+            const player = c.side >= 0;
+            arena.dataset.phase = g.phase || 'ready';
+            arena.dataset.w = last && last.winner !== null ? String(last.winner) : '';
+            arena.dataset.r = last ? last.reason : '';
+            local.live = playing && player && (g.phase === 'wait' || g.phase === 'go');
+            arena.classList.toggle('live', local.live);
+            arena.disabled = !player || !playing;
+
+            if (g.phase === 'ready') {
+              main.textContent = 'Get ready';
+              sub.textContent = 'First to ' + g.target + ' wins';
+            } else if (g.phase === 'wait') {
+              main.textContent = 'Wait';
+              sub.textContent = player ? 'Tap when the screen turns green' : 'Watching';
+            } else if (g.phase === 'go') {
+              main.textContent = 'Tap!';
+              sub.textContent = player ? '\u00a0' : 'Watching'; // a space keeps the arena from changing height
+            } else if (last) {
+              if (last.reason === 'tap') {
+                main.textContent = last.ms + ' ms';
+                sub.textContent = names[last.winner].id === c.meId ? 'You were first' : names[last.winner].name + ' was first';
+              } else if (last.reason === 'early') {
+                const early = names[1 - last.winner];
+                main.textContent = 'Too early';
+                sub.textContent = (early.id === c.meId ? 'You' : early.name) + ' tapped before green';
+              } else {
+                main.textContent = 'No tap';
+                sub.textContent = 'Nobody tapped, so this round is replayed';
+              }
+            }
+            arena.setAttribute('aria-label', main.textContent + (sub.textContent ? '. ' + sub.textContent : ''));
+
+            // A short buzz on phones the moment the screen turns green
+            if (!c.first && local.phase !== 'go' && g.phase === 'go' && playing && player && navigator.vibrate) navigator.vibrate(25);
+            local.phase = g.phase;
+
+            if (!playing) return quickFinal(g, c);
+            return { text: 'Round ' + g.round };
+          }
+        };
+      }
+
+      /* ---------- the shared card around all three ---------- */
+      function buildQuick(entry) {
+        const g = entry.state;
+        const ui = { type: g.type, synced: false };
+
+        const head = el('g-head');
+        const badge = el('g-badge');
+        badge.innerHTML = GAME_ICON[g.type];
+        const title = el('g-title');
+        const kicker = el('g-kicker', 'span');
+        kicker.textContent = GAME_LABEL[g.type];
+        ui.line = el('', 'span');
+        title.append(kicker, ui.line);
+        head.append(badge, title);
+
+        const strip = el('g-players');
+        ui.players = [0, 1].map((i) => {
+          const box = el('g-player q' + i);
+          const mark = el('g-mark');
+          mark.innerHTML = '<i class="disc c' + i + '"></i>';
+          const name = el('g-pname', 'span');
+          const score = el('g-score');
+          const p = { box, name, num: null, pips: [] };
+          if (g.type === 'mem') {
+            p.num = el('num', 'span');
+            p.num.textContent = '0';
+            score.appendChild(p.num); // Memory Match counts pairs
+          } else {
+            for (let k = 0; k < g.target; k++) {
+              const pip = el('pip', 'i'); // Rock Paper Scissors and Reaction Duel are first to N rounds, so show N pips
+              score.appendChild(pip);
+              p.pips.push(pip);
+            }
+          }
+          box.append(mark, name, score);
+          strip.appendChild(box);
+          return p;
+        });
+
+        ui.game = (g.type === 'mem' ? buildMem : g.type === 'rps' ? buildRps : buildDuel)(entry);
+
+        ui.status = el('g-status');
+        ui.actions = el('g-actions');
+        const resign = el('ghost', 'button');
+        resign.type = 'button';
+        resign.textContent = 'Resign';
+        resign.addEventListener('click', () => {
+          if (window.confirm('Resign this game?')) socket.emit('resign-game', entry.state.id);
+        });
+        ui.actions.appendChild(resign);
+
+        entry.el.append(head, strip, ui.game.el, ui.status, ui.actions);
+        return ui;
+      }
+
+      function renderQuick(entry) {
+        const g = entry.state;
+        const meId = me ? me.id : null;
+        const side = g.challenger.id === meId ? 0 : g.opponent && g.opponent.id === meId ? 1 : -1;
+        if (!entry.ui || entry.ui.type !== g.type) {
+          entry.el.textContent = '';
+          entry.ui = buildQuick(entry);
+        }
+        const ui = entry.ui;
+        entry.el.dataset.status = g.status;
+
+        const nameOf = (p) => (p.id === meId ? 'You' : p.name);
+        ui.line.textContent = nameOf(g.challenger) + ' vs ' + nameOf(g.opponent);
+        [g.challenger, g.opponent].forEach((p, i) => {
+          const pl = ui.players[i];
+          pl.name.textContent = nameOf(p);
+          pl.box.classList.toggle('turn', g.status === 'playing' && g.turn === p.id);
+          pl.box.classList.toggle('won', g.status === 'won' && g.winner === p.id);
+          const score = g.scores ? g.scores[i] : 0;
+          if (pl.num) {
+            if (pl.num.textContent !== String(score)) {
+              pl.num.textContent = String(score);
+              pl.num.classList.remove('bump');
+              void pl.num.offsetWidth;
+              pl.num.classList.add('bump');
+            }
+          } else {
+            pl.pips.forEach((pip, k) => pip.classList.toggle('on', k < score));
+          }
+        });
+
+        const st = ui.game.sync(g, { side, meId, first: !ui.synced }) || {};
+        ui.synced = true;
+        ui.status.textContent = st.text || '';
+        ui.status.className = 'g-status' + (st.cls ? ' ' + st.cls : '') + (st.late ? ' late' : '');
+        ui.actions.hidden = !(g.status === 'playing' && side >= 0);
+      }
 
       /* ---------- disappear mode ---------- */
       let disappearOn = false;
