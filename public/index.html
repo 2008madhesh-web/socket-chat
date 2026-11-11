@@ -1768,6 +1768,73 @@
     .arena[data-phase="reveal"][data-w="1"] .ar-main { color: var(--p1); }
     .arena[data-phase="reveal"][data-r="early"] .ar-main { color: #f59e0b; }
     .arena[data-phase="reveal"][data-r="idle"] .ar-main { color: var(--muted); }
+
+    /* ================= group info, seen status, legal links ================= */
+
+    /* the chat header opens group info when the open chat is a group */
+    .brand.tappable { cursor: pointer; border-radius: 14px; margin: -4px; padding: 4px 8px 4px 4px; background: var(--field); transition: background-color 0.2s ease; }
+    .brand.tappable:hover { background: var(--bubble); }
+    .brand.tappable { min-width: 0; flex: 0 1 auto; }
+    .brand.tappable .brand-text { min-width: 0; }
+    .brand-text h2:has(.bt-name) { display: flex; align-items: center; min-width: 0; }
+    .bt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .brand-text h2 .chev { flex: 0 0 auto; }
+    .brand.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .brand-text h2 .chev { display: inline-block; width: 14px; height: 14px; margin-left: 3px; vertical-align: -1px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* group info sheet: two views, the group itself and "add people" */
+    .gi-sheet { max-width: 400px; }
+    .gi-sheet[data-view="info"] .gi-add-view, .gi-sheet[data-view="add"] .gi-info-view { display: none; }
+    .gi-name-row { display: flex; gap: 8px; }
+    .gi-name-row input { flex: 1; min-width: 0; }
+    .gi-name-row .primary { flex: 0 0 auto; padding: 0 18px; }
+    .gi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 6px; }
+    .gi-head strong { font-size: 0.9rem; font-weight: 700; }
+    .pill-btn { padding: 7px 14px; border-radius: 999px; background: var(--field); color: var(--text); font-size: 0.82rem; font-weight: 700; transition: background-color 0.2s ease, transform 0.25s var(--spring); }
+    .pill-btn:hover { background: var(--bubble); }
+    .pill-btn:active { transform: scale(0.95); }
+    .gi-members { max-height: min(32vh, 232px); margin-bottom: 14px; }
+    .gi-note { margin: 0 0 12px; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+    .gi-back { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 10px -6px; padding: 6px 10px 6px 6px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+    .gi-back:hover { color: var(--text); background: var(--field); }
+    .gi-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .gi-add-view .people { margin-top: 8px; }
+
+    /* seen status: sits under the latest message you sent */
+    .seen-line {
+      align-self: flex-end;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin: 2px 4px 0 0;
+      padding: 2px 4px;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      transition: color 0.3s ease;
+    }
+    button.seen-line { cursor: pointer; }
+    button.seen-line:hover { color: var(--text); }
+    .seen-line .ticks { width: 15px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .seen-line .ticks .t2 { opacity: 0; transition: opacity 0.3s ease; }
+    .seen-line.some .ticks .t2, .seen-line.all .ticks .t2 { opacity: 1; }
+    .seen-line.all { color: var(--accent); }
+    .seen-sheet .op-item { padding: 8px 6px; }
+    .seen-at { flex: 0 0 auto; color: var(--muted); font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .seen-at.no { font-weight: 500; opacity: 0.8; }
+
+    /* links to About, Contact and the Privacy policy */
+    .legal { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 8px; font-size: 0.74rem; }
+    .legal a { color: var(--muted); text-decoration: none; padding: 3px 0; }
+    .legal a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .legal a:focus-visible, .menu-legal a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    .auth-card .legal { justify-content: center; }
+    .menu-legal { display: flex; justify-content: center; gap: 4px 14px; flex-wrap: wrap; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .menu-legal a { color: var(--muted); font-size: 0.72rem; text-decoration: none; padding: 3px 0; }
+    .menu-legal a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .menu-legal + .menu-credit { margin-top: 4px; padding-top: 6px; border-top: 0; }
   </style>
 </head>
 <body>
@@ -1834,7 +1901,10 @@
         </ul>
       </section>
 
-      <div class="hv-foot credit">developed by <b>Madhesh</b></div>
+      <div class="hv-foot">
+        <div class="credit">developed by <b>Madhesh</b></div>
+        <nav class="legal" aria-label="About and legal"><a href="/about">About</a><a href="/contact">Contact</a><a href="/privacy">Privacy policy</a></nav>
+      </div>
     </div>
   </main>
 
@@ -1888,6 +1958,7 @@
       </form>
 
       <div class="credit">developed by <b>Madhesh</b></div>
+      <nav class="legal" aria-label="About and legal"><a href="/about">About</a><a href="/contact">Contact</a><a href="/privacy">Privacy policy</a></nav>
     </section>
   </main>
 
@@ -1950,6 +2021,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
                 Log out
               </button>
+              <nav class="menu-legal" aria-label="About and legal"><a href="/about" role="menuitem">About</a><a href="/contact" role="menuitem">Contact</a><a href="/privacy" role="menuitem">Privacy policy</a></nav>
               <div class="menu-credit">developed by <b>Madhesh</b></div>
             </div>
           </div>
@@ -2055,6 +2127,51 @@
           <div class="sheet-actions">
             <button type="button" class="ghost" id="new-cancel">Cancel</button>
             <button type="button" class="primary" id="new-create" disabled hidden>Create group</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sheet-backdrop" id="group-modal" aria-hidden="true">
+        <div class="sheet gi-sheet" data-view="info" role="dialog" aria-modal="true" aria-labelledby="gi-title">
+          <div class="gi-info-view">
+            <h3 id="gi-title">Group info</h3>
+            <p class="sheet-sub">Anyone in the group can rename it or add people.</p>
+            <div class="field">
+              <label for="gi-name">Group name</label>
+              <div class="gi-name-row">
+                <input id="gi-name" type="text" maxlength="40" autocomplete="off" />
+                <button type="button" class="primary" id="gi-save" disabled>Save</button>
+              </div>
+            </div>
+            <div class="gi-head">
+              <strong id="gi-count">Members</strong>
+              <button type="button" class="pill-btn" id="gi-add-btn">Add people</button>
+            </div>
+            <ul class="op-list gi-members" id="gi-members"></ul>
+          </div>
+          <div class="gi-add-view">
+            <button type="button" class="gi-back" id="gi-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Group info</button>
+            <h3>Add people</h3>
+            <p class="gi-note">New people can read the messages that were sent before they joined.</p>
+            <div class="picked" id="gi-picked" hidden></div>
+            <input id="gi-search" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Search chats or type a username" aria-label="Search your chats, or type an exact username" />
+            <ul class="people" id="gi-people"></ul>
+          </div>
+          <div class="form-error" id="gi-error" role="alert"></div>
+          <div class="sheet-actions">
+            <button type="button" class="ghost" id="gi-close">Close</button>
+            <button type="button" class="primary gi-add-view" id="gi-submit" disabled>Add to group</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sheet-backdrop" id="seen-modal" aria-hidden="true">
+        <div class="sheet seen-sheet" role="dialog" aria-modal="true" aria-labelledby="seen-title">
+          <h3 id="seen-title">Seen by</h3>
+          <p class="sheet-sub" id="seen-sub"></p>
+          <ul class="op-list" id="seen-list"></ul>
+          <div class="sheet-actions" style="margin-top:14px">
+            <button type="button" class="ghost" id="seen-close">Close</button>
           </div>
         </div>
       </div>
@@ -2734,6 +2851,7 @@
           else onlineIds.delete(id);
         });
         renderStatus();
+        if (giConvo) renderGroupInfo();
       });
 
       socket.on('rate-limited', () => {
@@ -3795,6 +3913,8 @@
       }
 
       function collapseRow(row) {
+        const seenLine = row.nextElementSibling;
+        if (seenLine && seenLine.classList.contains('seen-line')) seenLine.remove();
         promoteNext(row);
         row.style.height = row.offsetHeight + 'px';
         row.style.overflow = 'hidden';
@@ -3807,6 +3927,7 @@
           const wasLast = !row.nextElementSibling;
           const prev = row.previousElementSibling;
           row.remove();
+          renderSeen();
           if (wasLast) {
             if (prev && prev.classList.contains('row') && prev.dataset.uid) {
               lastSender = prev.dataset.uid;
@@ -4118,10 +4239,21 @@
         if (!c) {
           brandTitle.textContent = 'Atti chat';
           brandSub.innerHTML = 'developed by <b>Madhesh</b>';
+          setBrandTappable(false, '');
           return;
         }
         brandTitle.textContent = convoName(c);
-        brandSub.textContent = c.type === 'group' ? c.members.length + ' members' : 'Direct message';
+        if (c.type === 'group') {
+          brandSub.textContent = c.members.length + ' members';
+          // The subtitle is hidden on small phones, so the arrow that says "tap for group info" sits on the title.
+          // The name shortens with an ellipsis so the arrow always stays in view.
+          const name = brandTitle.textContent;
+          brandTitle.innerHTML = '<span class="bt-name"></span>' + CHEVRON_SVG;
+          brandTitle.firstChild.textContent = name;
+        } else {
+          brandSub.textContent = 'Direct message';
+        }
+        setBrandTappable(c.type === 'group', convoName(c));
       }
 
       function onlineMembers(c) {
@@ -4339,12 +4471,18 @@
             addGameCard(it.g, false);
           } else if (it.m.kind === 'result') {
             addSystemMessage(it.m.text, true);
+          } else if (it.m.kind === 'event') {
+            addSystemMessage(it.m.text, false);
           } else {
             addChatMessage(it.m, false);
           }
         });
         showEmptyIfNeeded();
         scrollToBottom(false);
+        renderSeen();
+        const opened = convos.get(d.id);
+        if (opened) opened.readSent = null; // after a reconnect, tell the server again if needed
+        markRead();
       });
 
       socket.on('convo:message', (msg) => {
@@ -4358,6 +4496,8 @@
           typingUsers.delete(msg.userId);
           renderTyping();
           addChatMessage(msg, true);
+          if (own) renderSeen();
+          else markRead();
           if (stick) scrollToBottom(true);
           else jumpBtn.classList.add('show');
         } else if (!own) {
@@ -4634,6 +4774,408 @@
         setDrawer(false);
         closeNew();
         closeReactions();
+      });
+
+
+      /* ================================================================ */
+      /* Group info (rename, add people) and seen status                  */
+      /* ================================================================ */
+
+      const CHEVRON_SVG = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+      const TICKS_SVG = '<svg class="ticks" viewBox="0 0 18 12" aria-hidden="true"><path d="M1.5 6.5L5 10L11 2.5"/><path class="t2" d="M8.5 9.5L9.5 10.5L16.5 2"/></svg>';
+      const BACK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+
+      const giModal = $('group-modal');
+      const giSheet = giModal.querySelector('.gi-sheet');
+      const giName = $('gi-name');
+      const giSave = $('gi-save');
+      const giCount = $('gi-count');
+      const giMembers = $('gi-members');
+      const giSearch = $('gi-search');
+      const giPickedEl = $('gi-picked');
+      const giPeople = $('gi-people');
+      const giSubmit = $('gi-submit');
+      const giError = $('gi-error');
+      const seenModal = $('seen-modal');
+      const seenSub = $('seen-sub');
+      const seenList = $('seen-list');
+      const brandEl = brandTitle.closest('.brand');
+
+      let giConvo = null; // the group whose info is open
+      let giDirty = false; // the name box has been edited
+      const giPicked = new Map(); // people chosen to add: id -> user
+      let giSeq = 0;
+      let giTimer = null;
+
+      const openGroup = () => (giConvo ? convos.get(giConvo) : null);
+
+      function showGiError(message) {
+        giError.textContent = message;
+        giError.classList.remove('show');
+        void giError.offsetWidth;
+        giError.classList.add('show');
+      }
+
+      function setGiView(view) {
+        giSheet.dataset.view = view;
+        giError.classList.remove('show');
+        if (view === 'add') {
+          giSearch.value = '';
+          giPicked.clear();
+          renderGiPicked();
+          runGiSearch('');
+          setTimeout(() => giSearch.focus(), 250);
+        }
+      }
+
+      function updateGiSave() {
+        const c = openGroup();
+        const name = giName.value.trim().replace(/\s+/g, ' ');
+        giSave.disabled = !c || !name || name === c.name;
+      }
+
+      // Draws the open group: its name and who is in it
+      function renderGroupInfo() {
+        const c = openGroup();
+        if (!c) {
+          closeGroupInfo();
+          return;
+        }
+        if (!giDirty) giName.value = c.name;
+        updateGiSave();
+        giCount.textContent = c.members.length + (c.members.length === 1 ? ' member' : ' members');
+
+        giMembers.textContent = '';
+        c.members.forEach((m) => {
+          const isMe = Boolean(me) && m.id === me.id;
+          const li = el('op-item', 'li');
+          const name = el('op-name', 'span');
+          name.textContent = m.displayName;
+          if (isMe) {
+            const you = el('op-you', 'span');
+            you.textContent = ' (you)';
+            name.appendChild(you);
+          }
+          li.append(buildAvatar(m.displayName, m.color, m.avatar), name);
+          const live = el('op-live' + (isMe || onlineIds.has(m.id) ? '' : ' off'), 'span');
+          live.title = isMe || onlineIds.has(m.id) ? 'Online' : 'Offline';
+          li.appendChild(live);
+          giMembers.appendChild(li);
+        });
+      }
+
+      function openGroupInfo() {
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        if (!c || c.type !== 'group') return;
+        setDrawer(false);
+        giConvo = c.id;
+        giDirty = false;
+        setGiView('info');
+        renderGroupInfo();
+        giModal.classList.add('open');
+        giModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeGroupInfo() {
+        giModal.classList.remove('open');
+        giModal.setAttribute('aria-hidden', 'true');
+        giConvo = null;
+      }
+
+      // In a group chat the header is a button that opens group info
+      function setBrandTappable(on, name) {
+        brandEl.classList.toggle('tappable', on);
+        if (on) {
+          brandEl.setAttribute('role', 'button');
+          brandEl.setAttribute('tabindex', '0');
+          brandEl.setAttribute('aria-label', name + ', group info');
+        } else {
+          brandEl.removeAttribute('role');
+          brandEl.removeAttribute('tabindex');
+          brandEl.removeAttribute('aria-label');
+        }
+      }
+      brandEl.addEventListener('click', () => { if (brandEl.classList.contains('tappable')) openGroupInfo(); });
+      brandEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openGroupInfo();
+        }
+      });
+
+      giName.addEventListener('input', () => {
+        giDirty = true;
+        updateGiSave();
+      });
+      giName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          giSave.click();
+        }
+      });
+      giSave.addEventListener('click', () => {
+        const c = openGroup();
+        if (!c || giSave.disabled) return;
+        if (!socket.connected) return showGiError('Still connecting. Try again in a moment.');
+        socket.emit('group:rename', { id: c.id, name: giName.value.trim() });
+        giDirty = false;
+        giSave.disabled = true;
+      });
+
+      $('gi-add-btn').addEventListener('click', () => setGiView('add'));
+      $('gi-back').addEventListener('click', () => setGiView('info'));
+      $('gi-close').addEventListener('click', closeGroupInfo);
+      giModal.addEventListener('click', (e) => { if (e.target === giModal) closeGroupInfo(); });
+
+      /* ---------- add people ---------- */
+      function updateGiSubmit() {
+        const n = giPicked.size;
+        giSubmit.disabled = n === 0;
+        giSubmit.textContent = n === 0 ? 'Add to group' : n === 1 ? 'Add 1 person' : 'Add ' + n + ' people';
+      }
+
+      function renderGiPicked() {
+        giPickedEl.textContent = '';
+        giPickedEl.hidden = giPicked.size === 0;
+        giPicked.forEach((u) => {
+          const chip = el('pick-chip', 'button');
+          chip.type = 'button';
+          chip.setAttribute('aria-label', 'Remove ' + u.displayName);
+          const n = el('', 'span');
+          n.textContent = u.displayName;
+          const x = el('', 'i');
+          x.textContent = '\u00d7';
+          chip.append(n, x);
+          chip.addEventListener('click', () => {
+            giPicked.delete(u.id);
+            renderGiPicked();
+            updateGiSubmit();
+            const row = giPeople.querySelector('.person[data-id="' + u.id + '"]');
+            if (row) row.classList.remove('sel');
+          });
+          giPickedEl.appendChild(chip);
+        });
+        updateGiSubmit();
+      }
+
+      function renderGiNote(text) {
+        giPeople.textContent = '';
+        const li = el('op-empty', 'li');
+        li.textContent = text;
+        giPeople.appendChild(li);
+      }
+
+      function renderGiPeople(users, emptyText) {
+        giPeople.textContent = '';
+        if (!users.length) return renderGiNote(emptyText);
+        users.forEach((u) => {
+          const li = document.createElement('li');
+          const b = el('person' + (giPicked.has(u.id) ? ' sel' : ''), 'button');
+          b.type = 'button';
+          b.dataset.id = u.id;
+          const text = el('p-text');
+          const n = el('p-name', 'span');
+          n.textContent = u.displayName;
+          text.appendChild(n);
+          if (u.username) {
+            const un = el('p-user', 'span');
+            un.textContent = '@' + u.username;
+            text.appendChild(un);
+          }
+          const tick = el('p-tick', 'span');
+          tick.textContent = '\u2713';
+          b.append(buildAvatar(u.displayName, u.color, u.avatar), text, tick);
+          b.addEventListener('click', () => {
+            if (giPicked.has(u.id)) giPicked.delete(u.id);
+            else giPicked.set(u.id, u);
+            b.classList.toggle('sel', giPicked.has(u.id));
+            renderGiPicked();
+          });
+          li.appendChild(b);
+          giPeople.appendChild(li);
+        });
+      }
+
+      // People from your chats who are not in the group yet, plus anyone whose exact username you type
+      async function runGiSearch(q) {
+        const c = openGroup();
+        if (!c) return;
+        const seq = ++giSeq;
+        const term = q.trim().replace(/^@/, '').toLowerCase();
+        const inGroup = new Set(c.members.map((m) => m.id));
+        const mine = dmContacts().filter(
+          (u) => !inGroup.has(u.id) && (!term || u.displayName.toLowerCase().includes(term) || (u.username || '').includes(term))
+        );
+        const empty = term
+          ? 'No chats match. Type an exact username to find someone new.'
+          : 'Everyone from your chats is already here. Type an exact username to find someone new.';
+        renderGiPeople(mine, empty);
+
+        if (!/^[a-z0-9_]{3,20}$/.test(term) || mine.some((u) => u.username === term)) {
+          giError.classList.remove('show');
+          return;
+        }
+        const res = await request('GET', '/api/users/search?q=' + encodeURIComponent(term));
+        if (seq !== giSeq) return; // a newer search is already on its way
+        if (!res.ok) return showGiError(res.data.error || 'Could not load people.');
+        giError.classList.remove('show');
+        const found = res.data.users || [];
+        const extra = found.filter((u) => !inGroup.has(u.id) && !mine.some((m) => m.id === u.id));
+        if (!extra.length && found.some((u) => inGroup.has(u.id))) {
+          return renderGiPeople(mine, found[0].displayName + ' is already in this group.');
+        }
+        renderGiPeople(mine.concat(extra), empty);
+      }
+
+      giSearch.addEventListener('input', () => {
+        clearTimeout(giTimer);
+        giTimer = setTimeout(() => runGiSearch(giSearch.value), 250);
+      });
+      giSubmit.addEventListener('click', () => {
+        const c = openGroup();
+        if (!c || giSubmit.disabled) return;
+        if (!socket.connected) return showGiError('Still connecting. Try again in a moment.');
+        socket.emit('group:add', { id: c.id, members: Array.from(giPicked.keys()) });
+        setGiView('info');
+      });
+
+      // The server changed a group (a new name, new people), or added you to one
+      socket.on('convo:updated', (c) => {
+        const old = convos.get(c.id);
+        if (old && old.lastMessage && (!c.lastMessage || old.lastMessage.time > c.lastMessage.time)) {
+          c.lastMessage = old.lastMessage;
+        }
+        convos.set(c.id, c);
+        if (!old && me && c.members.some((m) => m.id === me.id)) showToast('You were added to ' + c.name);
+        renderHeader();
+        refreshDrawer();
+        if (giConvo === c.id) renderGroupInfo();
+        if (c.id === activeConvo) renderSeen();
+      });
+
+      // A note about the chat itself, such as who was added
+      socket.on('convo:event', (d) => {
+        if (d.convo !== activeConvo) return;
+        const stick = isNearBottom();
+        addSystemMessage(d.text, false);
+        if (stick) scrollToBottom(true);
+      });
+
+      /* ---------- seen status ---------- */
+      const firstName = (m) => m.displayName.split(' ')[0];
+
+      // Who has seen a message sent at `time`: the others in the chat whose last read is at or after it
+      function seenSplit(c, time) {
+        const reads = c.reads || {};
+        const others = c.members.filter((m) => !me || m.id !== me.id);
+        const seen = others.filter((m) => (reads[m.id] || 0) >= time);
+        const waiting = others.filter((m) => (reads[m.id] || 0) < time);
+        return { others, seen, waiting, reads };
+      }
+
+      function seenText(c, time) {
+        const { others, seen, reads } = seenSplit(c, time);
+        if (!seen.length) return { text: 'Sent', state: '' };
+        if (c.type === 'dm') return { text: 'Seen ' + formatTime(reads[seen[0].id]), state: 'all' };
+        if (seen.length === others.length) return { text: 'Seen by everyone', state: 'all' };
+        const names = seen.slice(0, 2).map(firstName);
+        const rest = seen.length - names.length;
+        return {
+          text: 'Seen by ' + (rest > 0 ? names.join(', ') + ' and ' + rest + (rest === 1 ? ' other' : ' others') : names.join(' and ')),
+          state: 'some'
+        };
+      }
+
+      // One line under the latest message you sent
+      function renderSeen() {
+        const old = messagesEl.querySelector('.seen-line');
+        if (old) old.remove();
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        if (!c || !me) return;
+        const own = messagesEl.querySelectorAll('.row.own');
+        const last = own[own.length - 1];
+        if (!last) return;
+
+        const stick = isNearBottom();
+        const time = Number(last.dataset.time);
+        const s = seenText(c, time);
+        const line = el('seen-line' + (s.state ? ' ' + s.state : ''), c.type === 'group' ? 'button' : 'div');
+        if (c.type === 'group') {
+          line.type = 'button';
+          line.setAttribute('aria-label', s.text + '. See who has seen it');
+          line.addEventListener('click', () => openSeen(time));
+        }
+        line.innerHTML = TICKS_SVG;
+        const label = el('', 'span');
+        label.textContent = s.text;
+        line.appendChild(label);
+        last.after(line);
+        if (stick) scrollToBottom(false);
+      }
+
+      function openSeen(time) {
+        const c = activeConvo ? convos.get(activeConvo) : null;
+        if (!c) return;
+        const { seen, waiting, reads } = seenSplit(c, time);
+        seenSub.textContent = 'Message sent ' + formatTime(time);
+        seenList.textContent = '';
+        const add = (m, at) => {
+          const li = el('op-item', 'li');
+          const name = el('op-name', 'span');
+          name.textContent = m.displayName;
+          const when = el('seen-at' + (at ? '' : ' no'), 'span');
+          when.textContent = at ? formatTime(at) : 'Not yet';
+          li.append(buildAvatar(m.displayName, m.color, m.avatar), name, when);
+          seenList.appendChild(li);
+        };
+        seen.sort((a, b) => reads[a.id] - reads[b.id]).forEach((m) => add(m, reads[m.id]));
+        waiting.forEach((m) => add(m, 0));
+        seenModal.classList.add('open');
+        seenModal.setAttribute('aria-hidden', 'false');
+      }
+      function closeSeen() {
+        seenModal.classList.remove('open');
+        seenModal.setAttribute('aria-hidden', 'true');
+      }
+      $('seen-close').addEventListener('click', closeSeen);
+      seenModal.addEventListener('click', (e) => { if (e.target === seenModal) closeSeen(); });
+
+      socket.on('convo:seen', (d) => {
+        const c = convos.get(d.convo);
+        if (!c) return;
+        c.reads = c.reads || {};
+        c.reads[d.userId] = Math.max(c.reads[d.userId] || 0, d.at);
+        if (d.convo === activeConvo) renderSeen();
+      });
+
+      /* ---------- telling the others you have seen their messages ---------- */
+      let readTimer = null;
+
+      // True if the newest message is someone else's and you have not told the server you saw it
+      function hasUnseen(c) {
+        const last = c.lastMessage;
+        if (!last || !me || last.userId === me.id) return false;
+        return last.time > ((c.reads && c.reads[me.id]) || 0) && c.readSent !== last.time;
+      }
+
+      // Only counts as seen while the chat is open and you are actually looking at the app
+      function markRead() {
+        clearTimeout(readTimer);
+        readTimer = setTimeout(() => {
+          if (!activeConvo || !socket.connected || !appInFront()) return;
+          const c = convos.get(activeConvo);
+          if (!c || !hasUnseen(c)) return;
+          c.readSent = c.lastMessage.time;
+          socket.emit('convo:read', c.id);
+        }, 300);
+      }
+      document.addEventListener('visibilitychange', markRead);
+      window.addEventListener('focus', markRead);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        closeGroupInfo();
+        closeSeen();
       });
 
       /* ================================================================ */
