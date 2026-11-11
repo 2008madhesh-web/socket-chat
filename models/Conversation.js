@@ -34,6 +34,16 @@ const conversationSchema = new mongoose.Schema(
       sparse: true
     },
 
+    // When each member last read this chat. A message counts as seen by a person
+    // if it was sent at or before their `at`. New group members start at the moment they joined.
+    reads: [
+      {
+        _id: false,
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        at: { type: Date, required: true }
+      }
+    ],
+
     // Denormalised so the chat list can show a preview without loading messages
     lastMessage: {
       text: { type: String, maxlength: 100 },
