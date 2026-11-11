@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark light" />
+  <title>About Atti chat</title>
+  <meta name="description" content="Atti chat is a live chat app where friends message each other, play quick games and draw together in one room. Built by Madhesh." />
+  <link rel="canonical" href="https://attichat.madhesh.website/about" />
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <script>
+    /* Use the theme saved in the app, before first paint */
+    (function () {
+      try { if (localStorage.getItem('atti-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <a class="top-brand" href="/"><img src="/icon-192.png" alt="" width="36" height="36" />Atti chat</a>
+    <div class="top-actions">
+      <button class="btn btn-quiet theme" id="theme-toggle" type="button">Light mode</button>
+      <a class="btn btn-primary" href="/">Open the app</a>
+    </div>
+  </header>
+
+  <main class="page" id="main">
+    <header class="page-head">
+      <h1>One live room for you and your friends.</h1>
+      <p class="lede">Atti chat is a place to talk, play and sketch together, so a conversation with a friend never has to move to another app to turn into something fun.</p>
+    </header>
+
+    <div class="doc-grid">
+      <article class="doc">
+        <h2 id="what">What you can do here</h2>
+        <p>Find a friend by their exact username and message them directly, or name a group and add everyone. Anyone in a group can rename it or add more people later, and you can see when your messages have been seen.</p>
+        <p>Challenge someone to Tic-Tac-Toe, Connect Four, Memory Match, Rock Paper Scissors or a Reaction Duel without leaving the conversation. Open a shared canvas and draw together. Turn on disappear mode and your messages delete themselves after ten seconds. Turn on notifications and your phone or laptop alerts you when a friend writes.</p>
+
+        <h2 id="why">Why it exists</h2>
+        <p>Most chat apps are for sending messages, and most games are for playing alone or with strangers. Atti chat puts the two together for people who already know each other. Quick games, a shared sketchpad and a live chat sit in one room, so winning a round of Tic-Tac-Toe and arguing about it happen in the same place.</p>
+        <p>Atti chat is kept small on purpose. You find people by username, not by a public directory, and there is no feed to scroll.</p>
+
+        <h2 id="how-it-is-paid-for">How it is paid for</h2>
+        <p>Running a live chat costs money for hosting and storage. To help cover it, Atti chat may show ads from Google and other ad networks. You can read exactly how ads and cookies work in the <a href="/privacy#ads">privacy policy</a>.</p>
+
+        <h2 id="author">Who builds it</h2>
+        <p>Atti chat is designed, built and looked after by <strong>Madhesh</strong>. If something is broken, confusing or missing, tell me through the <a href="/contact">contact page</a>. Bug reports and ideas from real users are how the app gets better.</p>
+        <p><a class="btn btn-primary" href="/">Start chatting</a></p>
+      </article>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Atti chat, developed by <b>Madhesh</b></span>
+    <nav aria-label="About and legal">
+      <a href="/about" aria-current="page">About</a>
+      <a href="/contact">Contact</a>
+      <a href="/privacy">Privacy policy</a>
+    </nav>
+  </footer>
+  <script src="/pages.js"></script>
+</body>
+</html>

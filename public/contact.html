@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Contact Atti chat</title>
+  <meta name="description" content="Contact the maker of Atti chat by email at 2008madhesh@gmail.com, or use the message form to report a bug, ask a question or request your data." />
+  <link rel="canonical" href="https://attichat.madhesh.website/contact" />
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <script>
+    /* Use the theme saved in the app, before first paint */
+    (function () {
+      try { if (localStorage.getItem('atti-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <a class="top-brand" href="/"><img src="/icon-192.png" alt="" width="36" height="36" />Atti chat</a>
+    <div class="top-actions">
+      <button class="btn btn-quiet theme" id="theme-toggle" type="button">Light mode</button>
+      <a class="btn btn-primary" href="/">Open the app</a>
+    </div>
+  </header>
+
+  <main class="page" id="main">
+    <header class="page-head">
+      <p class="lede" style="margin:0 0 18px;color:var(--text);font-weight:600">Write to me at</p>
+      <h1><a class="mail-big" href="mailto:2008madhesh@gmail.com">2008madhesh@gmail.com</a></h1>
+      <div class="mail-actions">
+        <a class="btn btn-primary" href="mailto:2008madhesh@gmail.com">Write an email</a>
+        <button class="btn btn-quiet" id="copy-mail" type="button">Copy address</button>
+        <span class="copy-note" id="copy-note" role="status" aria-live="polite"></span>
+      </div>
+    </header>
+
+    <div class="contact-grid">
+      <section class="doc" aria-labelledby="who">
+        <h2 id="who">What to write about</h2>
+        <p>Anything about Atti chat: a bug, an idea, a problem logging in, a question about ads or privacy, or a request to see or delete your data. I read every message and reply as soon as I can.</p>
+        <h3>Reporting a problem</h3>
+        <p>Say what you were doing, what you expected and what happened instead. Add your phone or browser if you know it.</p>
+        <h3>Asking about your account or data</h3>
+        <p>Include your username so I can find your account. Never send your password.</p>
+        <p>You can also read the <a href="/privacy">privacy policy</a> and <a href="/about">about page</a>.</p>
+      </section>
+
+      <form class="form" id="mail-form" novalidate>
+        <div>
+          <h2>Or write it here</h2>
+          <p>This opens your own email app with the message filled in.</p>
+        </div>
+        <div>
+          <label for="topic">What is it about?</label>
+          <select id="topic" name="topic">
+            <option>Question</option>
+            <option>Bug report</option>
+            <option>Idea or feedback</option>
+            <option>My account or data</option>
+            <option>Ads or privacy</option>
+          </select>
+        </div>
+        <div>
+          <label for="message">Your message</label>
+          <textarea id="message" name="message" maxlength="1500" placeholder="Tell me what is on your mind"></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">Open in my email app</button>
+        <p class="form-hint" id="form-hint" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Atti chat, developed by <b>Madhesh</b></span>
+    <nav aria-label="About and legal">
+      <a href="/about">About</a>
+      <a href="/contact" aria-current="page">Contact</a>
+      <a href="/privacy">Privacy policy</a>
+    </nav>
+  </footer>
+  <script src="/pages.js"></script>
+</body>
+</html>
