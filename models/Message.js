@@ -27,10 +27,11 @@ const messageSchema = new mongoose.Schema(
       maxlength: 500
     },
 
-    // 'result' is the one-line summary left behind by a finished game
+    // 'result' is the one-line summary left behind by a finished game.
+    // 'event' is a note about the chat itself, such as someone being added to a group.
     kind: {
       type: String,
-      enum: ['text', 'result'],
+      enum: ['text', 'result', 'event'],
       default: 'text'
     },
 
