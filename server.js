@@ -82,7 +82,8 @@ const io = new Server(server);
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Render sits behind a proxy; needed for secure cookies and rate limiting
 
-app.use(express.static(path.join(__dirname, 'public')));
+// `extensions` lets /privacy, /about and /contact open privacy.html, about.html and contact.html
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 app.use(express.json({ limit: '10kb' }));
 
 /* ------------------------------------------------------------------ */
@@ -1067,6 +1068,26 @@ function emitToMembers(memberIds, event, payload) {
   io.to(memberIds.map((id) => `user:${id}`)).emit(event, payload);
 }
 
+function readsOf(c) {
+  const out = {};
+  (c.reads || []).forEach((r) => {
+    const id = String(r.user);
+    const at = r.at ? new Date(r.at).getTime() : 0;
+    if (!out[id] || at > out[id]) out[id] = at;
+  });
+  return out;
+}
+
+// Member ids of each conversation. Every connection shares this, so when someone is added
+// to a group, everyone already in it starts delivering messages to the new person at once.
+const memberIdsCache = new Map();
+const MEMBER_CACHE_LIMIT = 5000;
+
+function joinNames(names) {
+  if (names.length <= 1) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
 // What the browser sees of a conversation (members must be populated)
 function serializeConvo(c) {
   const last = c.lastMessage && c.lastMessage.time ? c.lastMessage : null;
@@ -1076,6 +1097,8 @@ function serializeConvo(c) {
     name: c.name || '',
     color: colorFor(c.id),
     members: (c.members || []).map(serializeUser),
+    // userId -> time (ms) of the last message that person has seen
+    reads: readsOf(c),
     lastMessage: last
       ? { text: last.text || '', userId: String(last.sender), time: last.time.getTime() }
       : null,
@@ -1117,22 +1140,25 @@ function registerConversationHandlers(socket, user, allowSend) {
   const fail = (message) => socket.emit('convo-error', { message });
   const allowReact = makeLimiter(12, 3000);
   const allowCreate = makeLimiter(5, 10000);
-  const memberCache = new Map(); // conversationId -> [memberId, ...] (only conversations this user belongs to)
+  const allowEdit = makeLimiter(10, 10000);
+  const allowRead = makeLimiter(40, 10000);
 
   // Returns the member ids if this user belongs to the conversation, otherwise null
   async function memberIdsOf(convoId) {
-    if (memberCache.has(convoId)) return memberCache.get(convoId);
+    const cached = memberIdsCache.get(convoId);
+    if (cached) return cached.includes(userId) ? cached : null;
     const c = await Conversation.findOne({ _id: convoId, members: userId }).select('members').lean();
     if (!c) return null;
     const ids = c.members.map(String);
-    memberCache.set(convoId, ids);
+    if (memberIdsCache.size >= MEMBER_CACHE_LIMIT) memberIdsCache.clear();
+    memberIdsCache.set(convoId, ids);
     return ids;
   }
 
   // Tell every member about a new conversation, then open it for whoever started it
   async function announce(convo, toIds) {
     await convo.populate('members', 'displayName username avatar');
-    memberCache.set(convo.id, convo.members.map((m) => m.id));
+    memberIdsCache.set(convo.id, convo.members.map((m) => m.id));
     emitToMembers(toIds, 'convo:new', serializeConvo(convo));
 
     // The people in this chat can now see each other's online status
@@ -1309,10 +1335,119 @@ function registerConversationHandlers(socket, user, allowSend) {
     }
   });
 
+  // This person has now seen everything in the chat: remember it and tell the others in it
+  socket.on('convo:read', async (id) => {
+    try {
+      if (!isId(id) || !allowRead()) return;
+      const members = await memberIdsOf(id);
+      if (!members) return;
+
+      const at = new Date();
+      // timestamps: false, so reading a chat does not move it up the chat list
+      const res = await Conversation.updateOne(
+        { _id: id, 'reads.user': userId },
+        { $max: { 'reads.$.at': at } },
+        { timestamps: false }
+      );
+      if (res.matchedCount === 0) {
+        await Conversation.updateOne(
+          { _id: id, 'reads.user': { $ne: userId } },
+          { $push: { reads: { user: userId, at } } },
+          { timestamps: false }
+        );
+      }
+      emitToMembers(members, 'convo:seen', { convo: id, userId, at: at.getTime() });
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  // A note in the chat about the chat itself ("Asha added Ben"), kept in the history
+  async function postEvent(convoId, members, text) {
+    const doc = await Message.create({ conversation: convoId, sender: userId, text: text.slice(0, 500), kind: 'event' });
+    emitToMembers(members, 'convo:event', { convo: convoId, id: String(doc._id), text: doc.text, time: doc.createdAt.getTime() });
+  }
+
+  // Tell everyone in a group that it changed (a new name, new people) and show the new people online status
+  async function announceChange(convoId, members) {
+    const fresh = await Conversation.findById(convoId).populate('members', 'displayName username avatar');
+    if (!fresh) return;
+    emitToMembers(members, 'convo:updated', serializeConvo(fresh));
+    const users = {};
+    fresh.members.forEach((m) => { users[m.id] = presence.has(m.id); });
+    emitToMembers(members, 'presence', { users });
+  }
+
+  // Any member can add people to a group
+  socket.on('group:add', async (data) => {
+    try {
+      if (!data || typeof data !== 'object' || !isId(data.id)) return;
+      if (!allowEdit()) return fail('Slow down a little.');
+
+      const wanted = Array.isArray(data.members) ? Array.from(new Set(data.members.filter(isId))) : [];
+      if (!wanted.length) return fail('Pick at least one person to add.');
+
+      const convo = await Conversation.findOne({ _id: data.id, type: 'group', members: userId });
+      if (!convo) return fail('You are not part of that group.');
+
+      const current = convo.members.map(String);
+      const added = wanted.filter((id) => !current.includes(id));
+      if (!added.length) return fail('They are already in this group.');
+      if (current.length + added.length > MAX_GROUP_MEMBERS) {
+        return fail(`A group can have up to ${MAX_GROUP_MEMBERS} people.`);
+      }
+
+      const people = await User.find({ _id: { $in: added } }).select('displayName');
+      if (people.length !== added.length) return fail('Some of those people could not be found.');
+
+      // New people start as having read everything up to now, so old messages are not shown as unseen by them
+      const now = new Date();
+      await Conversation.updateOne(
+        { _id: convo._id },
+        { $addToSet: { members: { $each: added } }, $push: { reads: { $each: added.map((id) => ({ user: id, at: now })) } } }
+      );
+
+      const everyone = current.concat(added);
+      memberIdsCache.set(convo.id, everyone);
+      for (const g of games.values()) if (g.convo === convo.id) g.members = everyone; // a game in progress reaches them too
+
+      await announceChange(convo.id, everyone);
+      await postEvent(convo.id, everyone, `${user.displayName} added ${joinNames(people.map((p) => p.displayName))}`);
+    } catch (err) {
+      console.error(err);
+      fail('Could not add them to the group.');
+    }
+  });
+
+  // Any member can rename a group
+  socket.on('group:rename', async (data) => {
+    try {
+      if (!data || typeof data !== 'object' || !isId(data.id)) return;
+      if (!allowEdit()) return fail('Slow down a little.');
+
+      const name = typeof data.name === 'string' ? data.name.replace(/\s+/g, ' ').trim().slice(0, MAX_GROUP_NAME) : '';
+      if (!name) return fail('Give your group a name.');
+
+      const convo = await Conversation.findOne({ _id: data.id, type: 'group', members: userId }).select('name members');
+      if (!convo) return fail('You are not part of that group.');
+      if (convo.name === name) return;
+
+      await Conversation.updateOne({ _id: convo._id }, { $set: { name } });
+      const members = convo.members.map(String);
+      memberIdsCache.set(convo.id, members);
+
+      await announceChange(convo.id, members);
+      await postEvent(convo.id, members, `${user.displayName} renamed the group to ${name}`);
+    } catch (err) {
+      console.error(err);
+      fail('Could not rename the group.');
+    }
+  });
+
   socket.on('convo:typing', (data) => {
     if (!data || typeof data !== 'object' || !isId(data.id)) return;
-    const members = memberCache.get(data.id); // only conversations opened on this connection
-    if (!members) return;
+    const members = memberIdsCache.get(data.id); // only chats someone has opened since the server started
+    if (!members || !members.includes(userId)) return;
     io.to(members.map((id) => `user:${id}`))
       .except(`user:${userId}`)
       .emit('convo:typing', { convo: data.id, id: userId, name: user.displayName, isTyping: Boolean(data.isTyping) });
